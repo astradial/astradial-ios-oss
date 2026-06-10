@@ -85,6 +85,7 @@
 		D719ABB92ABC67BF00B41C10 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D719ABB82ABC67BF00B41C10 /* ContentView.swift */; };
 		AD00000000000000000000A1 /* NativePhoneUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000A2 /* NativePhoneUI.swift */; };
 		AD00000000000000000000A3 /* AstradialMD.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000A4 /* AstradialMD.swift */; };
+		AD00000000000000000000A5 /* TicketsUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000A6 /* TicketsUI.swift */; };
 		D719ABBB2ABC67BF00B41C10 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D719ABBA2ABC67BF00B41C10 /* Assets.xcassets */; };
 		D719ABBF2ABC67BF00B41C10 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D719ABBE2ABC67BF00B41C10 /* Preview Assets.xcassets */; };
 		D719ABC92ABC6FD700B41C10 /* CoreContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = D719ABC82ABC6FD700B41C10 /* CoreContext.swift */; };
@@ -368,6 +369,7 @@
 		D719ABB82ABC67BF00B41C10 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AD00000000000000000000A2 /* NativePhoneUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePhoneUI.swift; sourceTree = "<group>"; };
 		AD00000000000000000000A4 /* AstradialMD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AstradialMD.swift; sourceTree = "<group>"; };
+		AD00000000000000000000A6 /* TicketsUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketsUI.swift; sourceTree = "<group>"; };
 		D719ABBA2ABC67BF00B41C10 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D719ABBC2ABC67BF00B41C10 /* Linphone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Linphone.entitlements; sourceTree = "<group>"; };
 		D719ABBE2ABC67BF00B41C10 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
@@ -854,6 +856,7 @@
 				D719ABB82ABC67BF00B41C10 /* ContentView.swift */,
 				AD00000000000000000000A2 /* NativePhoneUI.swift */,
 				AD00000000000000000000A4 /* AstradialMD.swift */,
+				AD00000000000000000000A6 /* TicketsUI.swift */,
 			);
 			path = Main;
 			sourceTree = "<group>";
@@ -1648,6 +1651,7 @@
 				D719ABB92ABC67BF00B41C10 /* ContentView.swift in Sources */,
 				AD00000000000000000000A1 /* NativePhoneUI.swift in Sources */,
 				AD00000000000000000000A3 /* AstradialMD.swift in Sources */,
+				AD00000000000000000000A5 /* TicketsUI.swift in Sources */,
 				D71FCA832AE14D6E00D2E43E /* ContactFragment.swift in Sources */,
 				D7C3650C2AF0084000FE6142 /* EditContactViewModel.swift in Sources */,
 				D78E062A2BEA698E00CE3783 /* MediaEncryptedSheetBottomSheet.swift in Sources */,

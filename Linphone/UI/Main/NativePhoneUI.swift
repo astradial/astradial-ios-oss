@@ -58,8 +58,8 @@ struct NativePhoneRootView: View {
 				KeypadTabView()
 					.tabItem { Label("Keypad", systemImage: "circle.grid.3x3.fill") }
 					.tag(3)
-				VoicemailTabView()
-					.tabItem { Label("Voicemail", systemImage: "recordingtape") }
+				TicketsTabView()
+					.tabItem { Label("Tickets", systemImage: "ticket.fill") }
 					.tag(4)
 			}
 
