@@ -80,9 +80,10 @@ struct CDRCall: Decodable, Identifiable {
 	let answeredBy: String?
 	let recordingUrl: String?
 	let queueName: String?
+	let linkedid: String?
 
 	enum CodingKeys: String, CodingKey {
-		case id, calldate, src, dst, disposition, duration, billsec, direction
+		case id, calldate, src, dst, disposition, duration, billsec, direction, linkedid
 		case waitTime = "wait_time"
 		case answeredBy = "answered_by"
 		case recordingUrl = "recording_url"
@@ -90,20 +91,33 @@ struct CDRCall: Decodable, Identifiable {
 	}
 
 	var date: Date {
-		ISO8601DateFormatter().date(from: calldate)
-			?? Self.fallbackFormatter.date(from: calldate)
-			?? .distantPast
+		if let date = ISO8601DateFormatter().date(from: calldate) { return date }
+		// Strings carrying an explicit offset/Z are UTC-anchored; naive
+		// MariaDB-style datetimes are interpreted as server-local (IST).
+		let hasOffset = calldate.hasSuffix("Z") || calldate.contains("+")
+		for formatter in (hasOffset ? Self.utcFormatters : Self.naiveFormatters) {
+			if let date = formatter.date(from: calldate) { return date }
+		}
+		return .distantPast
 	}
 
 	var isInbound: Bool { direction != "outbound" }
 	var isMissed: Bool { disposition != "ANSWERED" && isInbound }
 
-	static let fallbackFormatter: DateFormatter = {
+	static let fallbackFormatter: DateFormatter = makeFormatter("yyyy-MM-dd'T'HH:mm:ss'Z'", utc: true)
+	static let utcFormatters = [fallbackFormatter]
+	static let naiveFormatters = [
+		makeFormatter("yyyy-MM-dd'T'HH:mm:ss", utc: false),
+		makeFormatter("yyyy-MM-dd HH:mm:ss", utc: false)
+	]
+
+	private static func makeFormatter(_ format: String, utc: Bool) -> DateFormatter {
 		let formatter = DateFormatter()
-		formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
-		formatter.timeZone = TimeZone(identifier: "UTC")
+		formatter.dateFormat = format
+		formatter.locale = Locale(identifier: "en_US_POSIX")
+		if utc { formatter.timeZone = TimeZone(identifier: "UTC") }
 		return formatter
-	}()
+	}
 }
 
 struct CDRResponse: Decodable {
@@ -189,6 +203,10 @@ final class PulseViewModel: ObservableObject {
 	@Published var todayAnswered = 0
 	@Published var todayMissed = 0
 	@Published var answerRate: Double = 1.0
+	@Published var yesterdayInbound = 0
+	@Published var yesterdayMissed = 0
+	@Published var loaded = false
+	@Published var lastUpdated: Date?
 
 	// Tickets / recovery
 	@Published var callbackQueue: [Ticket] = []
@@ -220,21 +238,57 @@ final class PulseViewModel: ObservableObject {
 	}
 
 	func reload() async {
+		// Demo data ONLY when no API key is configured. A configured key
+		// that errors must never silently render fake numbers.
+		guard AstradialAPIConfig.isConfigured else {
+			apply(calls: Self.sampleCalls(), tickets: TicketsViewModel.sample)
+			truncated = false
+			isSampleData = true
+			errorMessage = nil
+			loaded = true
+			return
+		}
 		do {
 			let monthAgo = Calendar.current.date(byAdding: .day, value: -29, to: Calendar.current.startOfDay(for: .now))!
 			async let callsTask = AstradialAPI.shared.fetchCalls(from: monthAgo, to: .now)
 			async let ticketsTask = AstradialAPI.shared.fetchTickets()
 			let (calls, ticketsResponse) = try await (callsTask, ticketsTask)
-			apply(calls: calls, tickets: ticketsResponse.list)
+			// Collapse multi-leg sessions (same linkedid) to one representative
+			// row, preferring ANSWERED+billsec>0 — same rule as the editor's
+			// call-log view, so the two screens agree.
+			apply(calls: Self.dedupSessions(calls), tickets: ticketsResponse.list)
 			truncated = calls.count >= 3000
 			isSampleData = false
 			errorMessage = nil
+			lastUpdated = .now
 		} catch {
-			apply(calls: Self.sampleCalls(), tickets: TicketsViewModel.sample)
-			truncated = false
-			isSampleData = true
+			// Keep last-known-good data on screen; just surface the failure.
 			errorMessage = error.localizedDescription
+			isSampleData = false
 		}
+		loaded = true
+	}
+
+	static func dedupSessions(_ calls: [CDRCall]) -> [CDRCall] {
+		var best: [String: CDRCall] = [:]
+		var order: [String] = []
+		for call in calls {
+			let key = call.linkedid ?? "row-\(call.id)"
+			if let existing = best[key] {
+				best[key] = preferred(existing, call)
+			} else {
+				best[key] = call
+				order.append(key)
+			}
+		}
+		return order.compactMap { best[$0] }
+	}
+
+	private static func preferred(_ a: CDRCall, _ b: CDRCall) -> CDRCall {
+		let aAnswered = a.disposition == "ANSWERED" && (a.billsec ?? 0) > 0
+		let bAnswered = b.disposition == "ANSWERED" && (b.billsec ?? 0) > 0
+		if aAnswered != bAnswered { return aAnswered ? a : b }
+		return (a.duration ?? 0) >= (b.duration ?? 0) ? a : b
 	}
 
 	private func apply(calls: [CDRCall], tickets: [Ticket]) {
@@ -310,13 +364,21 @@ final class PulseViewModel: ObservableObject {
 		}
 		daily = days.values.sorted { $0.day < $1.day }
 
-		let last7 = Array(daily.suffix(7))
-		let prior7 = Array(daily.dropLast(7).suffix(7))
+		// Week-over-week compares COMPLETE days only — including today's
+		// partial day would read artificially negative every morning.
+		let completeDays = Array(daily.dropLast())
+		let last7 = Array(completeDays.suffix(7))
+		let prior7 = Array(completeDays.dropLast(7).suffix(7))
 		let last7Total = last7.reduce(0) { $0 + $1.total }
 		let prior7Total = prior7.reduce(0) { $0 + $1.total }
 		weekOverWeek = prior7Total > 0 ? (Double(last7Total) / Double(prior7Total)) - 1.0 : nil
 		newCallersLast7 = last7.reduce(0) { $0 + $1.newCallers }
 		outboundPerDayLast7 = last7.isEmpty ? 0 : Double(last7.reduce(0) { $0 + $1.outbound }) / Double(last7.count)
+
+		if let yesterday = completeDays.last {
+			yesterdayInbound = yesterday.total
+			yesterdayMissed = yesterday.missed
+		}
 
 		computeInsights(last7Total: last7Total, prior7Total: prior7Total)
 	}
@@ -351,11 +413,12 @@ final class PulseViewModel: ObservableObject {
 		}
 
 		// Graph 3 insight — new patients vs follow-up discipline.
+		// "New" honestly means: no call from this number in the last 30 days.
 		let outboundAvg = Int(outboundPerDayLast7.rounded())
 		if newCallersLast7 > 0 && outboundAvg < max(2, newCallersLast7 / 7) {
-			growthInsight = "\(newCallersLast7) new numbers called this week (≈ new patients), but staff average only \(outboundAvg) outbound calls/day. Every uncalled new patient is a lost repeat visit — set a daily call-back quota."
+			growthInsight = "\(newCallersLast7) numbers not seen in 30 days called this week (≈ new patients), but staff average only \(outboundAvg) outbound calls/day. Every uncalled new patient is a lost repeat visit — set a daily call-back quota."
 		} else if newCallersLast7 > 0 {
-			growthInsight = "\(newCallersLast7) new numbers this week and \(outboundAvg) outbound calls/day — follow-up discipline is holding. Watch this jump after marketing spends."
+			growthInsight = "\(newCallersLast7) first-time numbers (30-day basis) this week and \(outboundAvg) outbound calls/day — follow-up discipline is holding. Watch this jump after marketing spends."
 		} else {
 			growthInsight = "No first-time callers this week. If you're spending on marketing, it isn't ringing the phone."
 		}
@@ -384,7 +447,7 @@ final class PulseViewModel: ObservableObject {
 					direction: "inbound",
 					waitTime: 4 + (n * 7 + day * 3) % 18,
 					answeredBy: missed ? nil : "100\(1 + n % 4)",
-					recordingUrl: nil, queueName: nil
+					recordingUrl: nil, queueName: nil, linkedid: nil
 				))
 				id += 1
 			}
@@ -396,7 +459,7 @@ final class PulseViewModel: ObservableObject {
 					src: "8065978010", dst: "98\(40000000 + ((n + day) % 80) * 1373)",
 					disposition: "ANSWERED", duration: 60, billsec: 50,
 					direction: "outbound", waitTime: 6, answeredBy: nil,
-					recordingUrl: nil, queueName: nil
+					recordingUrl: nil, queueName: nil, linkedid: nil
 				))
 				id += 1
 			}
@@ -439,48 +502,91 @@ struct AnalyticsTabView: View {
 	private var dashboard: some View {
 		ScrollView {
 			VStack(spacing: 14) {
-				if viewModel.isSampleData {
-					sampleBanner
-				}
-				PulseHeroCard(viewModel: viewModel)
-				CallBackNowCard(viewModel: viewModel)
-				RecoveryCard(viewModel: viewModel)
-				HourlyGraphCard(viewModel: viewModel)
-				TrendGraphCard(viewModel: viewModel)
-				GrowthGraphCard(viewModel: viewModel)
-				NavigationLink {
-					OrgCallsListView()
-				} label: {
-					HStack {
-						Label("All Calls & Recordings", systemImage: "waveform")
-							.font(.subheadline.weight(.semibold))
-							.foregroundStyle(.indigo)
-						Spacer()
-						Image(systemName: "chevron.right")
-							.font(.footnote.weight(.semibold))
-							.foregroundStyle(Color(.systemGray3))
-					}
-					.padding(14)
-					.background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
-				}
-				.buttonStyle(.plain)
-
-				if viewModel.truncated {
-					Text("Based on the most recent 3,000 calls. Older days may be incomplete.")
-						.font(.caption2).foregroundStyle(.secondary)
-				}
+				banners
+				cards
 			}
 			.padding(.horizontal)
 			.padding(.bottom, 24)
+			.redacted(reason: viewModel.loaded ? [] : .placeholder)
 		}
 		.background(Color(.systemGroupedBackground))
+		.overlay {
+			if viewModel.isSampleData && viewModel.loaded {
+				Text("DEMO DATA")
+					.font(.system(size: 52, weight: .black, design: .rounded))
+					.foregroundStyle(Color.orange.opacity(0.13))
+					.rotationEffect(.degrees(-28))
+					.allowsHitTesting(false)
+			}
+		}
 		.refreshable { await viewModel.reload() }
+		.onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+			Task { await viewModel.reload() }
+		}
+	}
+
+	@ViewBuilder
+	private var banners: some View {
+		if viewModel.isSampleData {
+			sampleBanner
+		} else if let error = viewModel.errorMessage {
+			errorBanner(error)
+		}
+		if !viewModel.isSampleData, let updated = viewModel.lastUpdated {
+			freshnessRow(updated)
+		}
+	}
+
+	private func freshnessRow(_ updated: Date) -> some View {
+		HStack(spacing: 4) {
+			Image(systemName: "arrow.triangle.2.circlepath")
+			Text("Updated")
+			Text(updated, style: .relative)
+			Text("ago")
+		}
+		.font(.caption2)
+		.foregroundStyle(.secondary)
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+	@ViewBuilder
+	private var cards: some View {
+		PulseHeroCard(viewModel: viewModel)
+		CallBackNowCard(viewModel: viewModel)
+		RecoveryCard(viewModel: viewModel)
+		HourlyGraphCard(viewModel: viewModel)
+		TrendGraphCard(viewModel: viewModel)
+		GrowthGraphCard(viewModel: viewModel)
+		allCallsLink
+		if viewModel.truncated {
+			Text("Based on the most recent 3,000 calls. Older days may be incomplete.")
+				.font(.caption2).foregroundStyle(.secondary)
+		}
+	}
+
+	private var allCallsLink: some View {
+		NavigationLink {
+			OrgCallsListView()
+		} label: {
+			HStack {
+				Label("All Calls & Recordings", systemImage: "waveform")
+					.font(.subheadline.weight(.semibold))
+					.foregroundStyle(.indigo)
+				Spacer()
+				Image(systemName: "chevron.right")
+					.font(.footnote.weight(.semibold))
+					.foregroundStyle(Color(.systemGray3))
+			}
+			.padding(14)
+			.background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+		}
+		.buttonStyle(.plain)
 	}
 
 	private var sampleBanner: some View {
 		HStack(spacing: 8) {
 			Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-			Text(viewModel.errorMessage ?? "Showing sample data")
+			Text("Demo data — connect the Astradial API to see your hospital.")
 				.font(.footnote)
 			Spacer()
 			Button("Connect") { showSettings = true }
@@ -488,6 +594,20 @@ struct AnalyticsTabView: View {
 		}
 		.padding(10)
 		.background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+	}
+
+	private func errorBanner(_ message: String) -> some View {
+		HStack(spacing: 8) {
+			Image(systemName: "wifi.exclamationmark").foregroundStyle(.red)
+			Text("Couldn't refresh: \(message)")
+				.font(.footnote)
+				.lineLimit(2)
+			Spacer()
+			Button("Retry") { Task { await viewModel.reload() } }
+				.font(.footnote.weight(.semibold))
+		}
+		.padding(10)
+		.background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
 	}
 }
 
@@ -499,13 +619,22 @@ struct PulseCard<Content: View>: View {
 	let tint: Color
 	var why: String?
 	var insight: String?
+	var period: String?
 	@ViewBuilder var content: Content
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 10) {
-			Label(title, systemImage: icon)
-				.font(.subheadline.weight(.semibold))
-				.foregroundStyle(tint)
+			HStack {
+				Label(title, systemImage: icon)
+					.font(.subheadline.weight(.semibold))
+					.foregroundStyle(tint)
+				Spacer()
+				if let period {
+					Text(period)
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				}
+			}
 			content
 			if let insight, !insight.isEmpty {
 				HStack(alignment: .top, spacing: 6) {
@@ -551,18 +680,27 @@ struct PulseHeroCard: View {
 		return .red
 	}
 
+	@State private var animatedRate: Double = 0
+
 	var body: some View {
 		PulseCard(
 			title: "Today's Pulse", icon: "heart.fill", tint: .pink,
-			why: "Below 95% answer rate means patients are reaching your competitors. Every red point here is lost revenue."
+			why: "Below 95% answer rate means patients are reaching your competitors. Every red point here is lost revenue.",
+			period: Date.now.formatted(.dateTime.weekday(.wide).day().month())
 		) {
 			HStack(spacing: 18) {
 				ZStack {
 					Circle().stroke(Color(.systemGray5), lineWidth: 11)
 					Circle()
-						.trim(from: 0, to: viewModel.answerRate)
+						.trim(from: 0, to: animatedRate)
 						.stroke(ringColor, style: StrokeStyle(lineWidth: 11, lineCap: .round))
 						.rotationEffect(.degrees(-90))
+					// Target tick at 95%
+					Capsule()
+						.fill(Color.secondary.opacity(0.7))
+						.frame(width: 2.5, height: 13)
+						.offset(y: -52)
+						.rotationEffect(.degrees(360 * PulseViewModel.answerRateTarget))
 					VStack(spacing: 0) {
 						Text("\(Int(viewModel.answerRate * 100))%")
 							.font(.system(size: 24, weight: .bold, design: .rounded))
@@ -571,11 +709,17 @@ struct PulseHeroCard: View {
 					}
 				}
 				.frame(width: 104, height: 104)
+				.onAppear {
+					withAnimation(.easeOut(duration: 0.8)) { animatedRate = viewModel.answerRate }
+				}
+				.onChange(of: viewModel.answerRate) { _, newValue in
+					withAnimation(.easeOut(duration: 0.8)) { animatedRate = newValue }
+				}
 
 				VStack(alignment: .leading, spacing: 8) {
-					metric(value: "\(viewModel.todayInbound)", label: "calls today", color: .blue)
-					metric(value: "\(viewModel.todayMissed)", label: "missed", color: .red)
-					metric(value: "₹\(viewModel.atRiskRupees.formatted())", label: "revenue at risk", color: .orange)
+					metric(value: "\(viewModel.todayInbound)", label: "calls · yest \(viewModel.yesterdayInbound)", color: .blue)
+					metric(value: "\(viewModel.todayMissed)", label: "missed · yest \(viewModel.yesterdayMissed)", color: .red)
+					metric(value: "₹\(viewModel.atRiskRupees.formatted())", label: "backlog at risk (est.)", color: .orange)
 				}
 				Spacer()
 			}
@@ -649,7 +793,8 @@ struct RecoveryCard: View {
 	var body: some View {
 		PulseCard(
 			title: "Recovery Discipline", icon: "arrow.uturn.down.circle.fill", tint: .teal,
-			why: "How reliably your team calls missed patients back, and how fast. Manage staff to 100% recovered within 15 minutes."
+			why: "How reliably your team calls missed patients back, and how fast. Manage staff to 100% recovered within 15 minutes. Based on the latest 100 tickets; callbacks are detected within 1 day of the miss.",
+			period: "Last 7 days"
 		) {
 			HStack(spacing: 20) {
 				VStack(alignment: .leading, spacing: 2) {
@@ -681,7 +826,8 @@ struct HourlyGraphCard: View {
 	var body: some View {
 		PulseCard(
 			title: "Today by Hour", icon: "clock.badge.exclamationmark.fill", tint: .blue,
-			insight: viewModel.hourlyInsight
+			insight: viewModel.hourlyInsight,
+			period: "Today"
 		) {
 			Chart {
 				ForEach(viewModel.hourly) { stat in
@@ -763,12 +909,13 @@ struct GrowthGraphCard: View {
 	var body: some View {
 		PulseCard(
 			title: "New Patients & Follow-Ups", icon: "person.badge.plus", tint: .green,
-			insight: viewModel.growthInsight
+			insight: viewModel.growthInsight,
+			period: "Last 14 days"
 		) {
 			HStack(spacing: 16) {
 				HStack(spacing: 5) {
 					Circle().fill(.green).frame(width: 8, height: 8)
-					Text("New callers").font(.caption).foregroundStyle(.secondary)
+					Text("New callers (first in 30d)").font(.caption).foregroundStyle(.secondary)
 				}
 				HStack(spacing: 5) {
 					Circle().fill(.orange).frame(width: 8, height: 8)
@@ -886,7 +1033,13 @@ final class MDSession: ObservableObject {
 
 	@Published var isSignedIn = false
 	@Published var email: String?
-	@Published var demoMode = ProcessInfo.processInfo.environment["MD_DEMO"] == "1"
+	@Published var demoMode: Bool = {
+#if DEBUG
+		return ProcessInfo.processInfo.environment["MD_DEMO"] == "1"
+#else
+		return false
+#endif
+	}()
 	let firebaseAvailable: Bool
 
 	var displayName: String { email ?? "MD" }

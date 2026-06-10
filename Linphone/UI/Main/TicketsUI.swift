@@ -184,6 +184,7 @@ final class TicketsViewModel: ObservableObject {
 	@Published var filter: Filter = .open
 	@Published var isSampleData = true
 	@Published var errorMessage: String?
+	@Published var updateError: String?
 
 	var filtered: [Ticket] {
 		switch filter {
@@ -195,6 +196,15 @@ final class TicketsViewModel: ObservableObject {
 	}
 
 	func reload() async {
+		// Demo data only when no API key is configured; on real errors keep
+		// last-known-good tickets and surface the failure.
+		guard AstradialAPIConfig.isConfigured else {
+			tickets = Self.sample
+			counts = TicketStatusCounts(open: 3, inProgress: 1, closed: 2)
+			isSampleData = true
+			errorMessage = nil
+			return
+		}
 		do {
 			let response = try await AstradialAPI.shared.fetchTickets()
 			tickets = response.list
@@ -202,16 +212,18 @@ final class TicketsViewModel: ObservableObject {
 			isSampleData = false
 			errorMessage = nil
 		} catch {
-			tickets = Self.sample
-			counts = TicketStatusCounts(open: 3, inProgress: 1, closed: 2)
-			isSampleData = true
+			isSampleData = false
 			errorMessage = error.localizedDescription
 		}
 	}
 
 	func set(_ ticket: Ticket, fields: [String: Any]) async {
 		guard !isSampleData else { return }
-		try? await AstradialAPI.shared.patchTicket(id: ticket.id, fields: fields)
+		do {
+			try await AstradialAPI.shared.patchTicket(id: ticket.id, fields: fields)
+		} catch {
+			updateError = "Couldn't update ticket: \(error.localizedDescription)"
+		}
 		await reload()
 	}
 
@@ -316,6 +328,15 @@ struct TicketsTabView: View {
 			}
 			.sheet(isPresented: $showNewTicket) {
 				NewTicketSheet(viewModel: viewModel)
+			}
+			.alert(
+				viewModel.updateError ?? "",
+				isPresented: Binding(
+					get: { viewModel.updateError != nil },
+					set: { if !$0 { viewModel.updateError = nil } }
+				)
+			) {
+				Button("OK", role: .cancel) {}
 			}
 		}
 		.task { await viewModel.reload() }
