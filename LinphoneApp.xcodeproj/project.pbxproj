@@ -83,6 +83,8 @@
 		D71968922B86369D00DF4459 /* ChatBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D71968912B86369D00DF4459 /* ChatBubbleView.swift */; };
 		D719ABB72ABC67BF00B41C10 /* LinphoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D719ABB62ABC67BF00B41C10 /* LinphoneApp.swift */; };
 		D719ABB92ABC67BF00B41C10 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D719ABB82ABC67BF00B41C10 /* ContentView.swift */; };
+		AD00000000000000000000A1 /* NativePhoneUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000A2 /* NativePhoneUI.swift */; };
+		AD00000000000000000000A3 /* AstradialMD.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000A4 /* AstradialMD.swift */; };
 		D719ABBB2ABC67BF00B41C10 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D719ABBA2ABC67BF00B41C10 /* Assets.xcassets */; };
 		D719ABBF2ABC67BF00B41C10 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D719ABBE2ABC67BF00B41C10 /* Preview Assets.xcassets */; };
 		D719ABC92ABC6FD700B41C10 /* CoreContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = D719ABC82ABC6FD700B41C10 /* CoreContext.swift */; };
@@ -204,6 +206,7 @@
 		D7D3007A2F684EAF00836032 /* ConversationDeleteMessageBottomSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7D300792F684EAE00836032 /* ConversationDeleteMessageBottomSheet.swift */; };
 		D7D5AD7F2DD34F0E00016721 /* AppAuth in Frameworks */ = {isa = PBXBuildFile; productRef = D7D5AD7E2DD34F0E00016721 /* AppAuth */; };
 		D7D5AD812DD34F1A00016721 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = D7D5AD802DD34F1A00016721 /* FirebaseAnalytics */; };
+		AD00000000000000000000B2 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AD00000000000000000000B1 /* FirebaseAuth */; };
 		D7D5AD832DD34F2300016721 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = D7D5AD822DD34F2300016721 /* FirebaseCrashlytics */; };
 		D7D5AD852DD34F3700016721 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = D7D5AD842DD34F3700016721 /* FirebaseAnalytics */; };
 		D7D5AD872DD34F3C00016721 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = D7D5AD862DD34F3C00016721 /* FirebaseCrashlytics */; };
@@ -363,6 +366,8 @@
 		D719ABB32ABC67BF00B41C10 /* LinphoneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LinphoneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D719ABB62ABC67BF00B41C10 /* LinphoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinphoneApp.swift; sourceTree = "<group>"; };
 		D719ABB82ABC67BF00B41C10 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AD00000000000000000000A2 /* NativePhoneUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePhoneUI.swift; sourceTree = "<group>"; };
+		AD00000000000000000000A4 /* AstradialMD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AstradialMD.swift; sourceTree = "<group>"; };
 		D719ABBA2ABC67BF00B41C10 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D719ABBC2ABC67BF00B41C10 /* Linphone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Linphone.entitlements; sourceTree = "<group>"; };
 		D719ABBE2ABC67BF00B41C10 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
@@ -597,6 +602,7 @@
 				C618BF562D75CA03005A00E0 /* linphonesw in Frameworks */,
 				D7D5AD832DD34F2300016721 /* FirebaseCrashlytics in Frameworks */,
 				D7D5AD812DD34F1A00016721 /* FirebaseAnalytics in Frameworks */,
+				AD00000000000000000000B2 /* FirebaseAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -846,6 +852,8 @@
 				D7DC096A2CFA192200A6D47C /* Settings */,
 				D7A2EDD42AC180FE005D90FC /* Viewmodel */,
 				D719ABB82ABC67BF00B41C10 /* ContentView.swift */,
+				AD00000000000000000000A2 /* NativePhoneUI.swift */,
+				AD00000000000000000000A4 /* AstradialMD.swift */,
 			);
 			path = Main;
 			sourceTree = "<group>";
@@ -1638,6 +1646,8 @@
 				D71707202AC5989C0037746F /* TextExtension.swift in Sources */,
 				66C491F92B24D25B00CEA16D /* ConfigExtension.swift in Sources */,
 				D719ABB92ABC67BF00B41C10 /* ContentView.swift in Sources */,
+				AD00000000000000000000A1 /* NativePhoneUI.swift in Sources */,
+				AD00000000000000000000A3 /* AstradialMD.swift in Sources */,
 				D71FCA832AE14D6E00D2E43E /* ContactFragment.swift in Sources */,
 				D7C3650C2AF0084000FE6142 /* EditContactViewModel.swift in Sources */,
 				D78E062A2BEA698E00CE3783 /* MediaEncryptedSheetBottomSheet.swift in Sources */,
@@ -1937,7 +1947,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = msgNotificationService;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1980,7 +1990,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = msgNotificationService;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2168,7 +2178,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -2225,7 +2235,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = LinphoneApp;
@@ -2282,7 +2292,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.3;
@@ -2344,7 +2354,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.3;
@@ -2375,7 +2385,7 @@
 				INFOPLIST_FILE = linphoneExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = linphoneExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2409,7 +2419,7 @@
 				INFOPLIST_FILE = linphoneExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = linphoneExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -2631,6 +2641,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D7D5AD7C2DD34E7C00016721 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAnalytics;
+		};
+		AD00000000000000000000B1 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D7D5AD7C2DD34E7C00016721 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
 		};
 		D7D5AD822DD34F2300016721 /* FirebaseCrashlytics */ = {
 			isa = XCSwiftPackageProductDependency;

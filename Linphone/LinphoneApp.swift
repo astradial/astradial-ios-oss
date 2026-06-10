@@ -371,7 +371,7 @@ struct MainViewSwitcher: View {
 	
 	@ViewBuilder
 	func selectedMainView() -> some View {
-		ContentView()
+		NativePhoneRootView()
 			.onAppear {
 				appDelegate.coreContext = coreContext
 				appDelegate.navigationManager = navigationManager
