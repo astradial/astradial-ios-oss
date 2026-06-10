@@ -552,7 +552,6 @@ struct AnalyticsTabView: View {
 	@ViewBuilder
 	private var cards: some View {
 		PulseHeroCard(viewModel: viewModel)
-		CallBackNowCard(viewModel: viewModel)
 		RecoveryCard(viewModel: viewModel)
 		HourlyGraphCard(viewModel: viewModel)
 		TrendGraphCard(viewModel: viewModel)
@@ -734,57 +733,6 @@ struct PulseHeroCard: View {
 	}
 }
 
-// MARK: - 2. Call Back Now
-
-struct CallBackNowCard: View {
-	@ObservedObject var viewModel: PulseViewModel
-
-	var body: some View {
-		PulseCard(
-			title: "Call Back Now (\(viewModel.unrecoveredCount))", icon: "phone.badge.checkmark", tint: .red,
-			why: "Each number here is a patient nobody has reached since their missed call. Call within 15 minutes and the patient is usually saved."
-		) {
-			if viewModel.callbackQueue.isEmpty {
-				Label("All missed callers have been reached.", systemImage: "checkmark.circle.fill")
-					.font(.subheadline)
-					.foregroundStyle(.green)
-			} else {
-				VStack(spacing: 0) {
-					ForEach(viewModel.callbackQueue.prefix(5)) { ticket in
-						HStack(spacing: 10) {
-							InitialsAvatar(name: ticket.displayName, size: 36)
-							VStack(alignment: .leading, spacing: 1) {
-								HStack(spacing: 6) {
-									Text(ticket.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
-									PriorityBadge(priority: ticket.priority)
-								}
-								Text(ticket.summaryLine).font(.caption).foregroundStyle(.secondary)
-							}
-							Spacer()
-							if let last = ticket.lastCallDate {
-								Text(relativeDate(time_t(last.timeIntervalSince1970)))
-									.font(.caption).foregroundStyle(.secondary)
-							}
-							Button {
-								if let number = ticket.callerNumber { AstradialDialer.call(number) }
-							} label: {
-								Image(systemName: "phone.circle.fill")
-									.font(.system(size: 30))
-									.foregroundStyle(.green)
-							}
-							.buttonStyle(.plain)
-						}
-						.padding(.vertical, 6)
-						if ticket.id != viewModel.callbackQueue.prefix(5).last?.id {
-							Divider()
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
 // MARK: - 3. Recovery discipline
 
 struct RecoveryCard: View {
@@ -793,10 +741,10 @@ struct RecoveryCard: View {
 	var body: some View {
 		PulseCard(
 			title: "Recovery Discipline", icon: "arrow.uturn.down.circle.fill", tint: .teal,
-			why: "How reliably your team calls missed patients back, and how fast. Manage staff to 100% recovered within 15 minutes. Based on the latest 100 tickets; callbacks are detected within 1 day of the miss.",
+			why: "How reliably the front desk calls missed patients back, and how fast — the discipline to hold your team to: 100% recovered within 15 minutes, zero unreached. Based on the latest 100 tickets; callbacks detected within 1 day.",
 			period: "Last 7 days"
 		) {
-			HStack(spacing: 20) {
+			HStack(spacing: 16) {
 				VStack(alignment: .leading, spacing: 2) {
 					Text("\(Int(viewModel.recoveryRate * 100))%")
 						.font(.system(size: 26, weight: .bold, design: .rounded))
@@ -810,6 +758,14 @@ struct RecoveryCard: View {
 						.font(.system(size: 26, weight: .bold, design: .rounded))
 						.foregroundStyle((viewModel.medianRecoveryMinutes ?? 999) <= 15 ? .green : .orange)
 					Text("median time\nto call back")
+						.font(.caption).foregroundStyle(.secondary)
+				}
+				Divider().frame(height: 44)
+				VStack(alignment: .leading, spacing: 2) {
+					Text("\(viewModel.unrecoveredCount)")
+						.font(.system(size: 26, weight: .bold, design: .rounded))
+						.foregroundStyle(viewModel.unrecoveredCount == 0 ? .green : .red)
+					Text("still\nunreached")
 						.font(.caption).foregroundStyle(.secondary)
 				}
 				Spacer()
