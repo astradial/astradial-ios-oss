@@ -6,3 +6,9 @@ Pods/
 .DS_Store
 build
 Linphone.xcodeproj/xcuserdata
+# --- Astradial: never commit live credentials ---
+*.env
+.env.*
+GoogleService-Info-astradial.plist
+*-sa-key.json
+*credentials*.json
