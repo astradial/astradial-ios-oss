@@ -24,20 +24,20 @@ struct SplashScreen: View {
 
 	var body: some View {
 		ZStack {
-			Color.white
+			Color(.systemBackground)
 				.ignoresSafeArea()
 
-			Image("linphone")
-				.resizable()
-				.renderingMode(.template)
-				.aspectRatio(contentMode: .fit)
-				.frame(width: 240, height: 128)
-				.foregroundColor(ThemeManager.shared.currentTheme.main500)
+			VStack(spacing: 14) {
+				Image(systemName: "phone.badge.waveform.fill")
+					.font(.system(size: 64))
+					.foregroundStyle(.tint)
+				Text("Astradial")
+					.font(.title.weight(.bold))
+			}
 
 			ProgressView()
 				.controlSize(.small)
-				.progressViewStyle(CircularProgressViewStyle(tint: Color.orangeMain500))
-				.offset(y: 96)
+				.offset(y: 110)
 				.opacity(showSpinner ? 1 : 0)
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
