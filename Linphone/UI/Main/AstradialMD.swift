@@ -737,7 +737,7 @@ struct RecoveryCard: View {
 	var body: some View {
 		PulseCard(
 			title: "Recovery Discipline", icon: "arrow.uturn.down.circle.fill", tint: .teal,
-			why: "How reliably the front desk calls missed patients back, and how fast — the discipline to hold your team to: 100% recovered within 15 minutes, zero unreached. Based on the latest 100 tickets; callbacks detected within 1 day.",
+			why: "How fast the front desk calls missed patients back. Target: 100% within 15 minutes, zero unreached.",
 			period: "Last 7 days"
 		) {
 			HStack(spacing: 16) {
