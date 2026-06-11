@@ -10,16 +10,18 @@ on:
 # The private mirror consumes zero minutes (GitHub Free plan friendly).
 jobs:
   secret-scan:
-    name: Secret scan (gitleaks)
+    name: Secret scan (TruffleHog)
     if: github.repository == 'astradial/astradial-ios-oss'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # TruffleHog OSS is free for organizations (gitleaks-action requires
+      # a paid org license). GitHub push protection remains the first line.
+      - uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --results=verified,unknown
 
   build:
     name: Build (iOS Simulator)

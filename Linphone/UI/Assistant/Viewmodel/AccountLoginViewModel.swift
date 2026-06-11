@@ -150,7 +150,7 @@ class AccountLoginViewModel: ObservableObject {
 						}
 						
 						Log.warn("Registration failed for account \(account.displayName()), deleting it from core")
-						core.removeAccountWithData(account: account)
+						core.removeAccount(account: account)
 					default:
 						break
 					}
@@ -201,7 +201,7 @@ class AccountLoginViewModel: ObservableObject {
 		coreContext.doOnCoreQueue { core in
 			// To completely remove an Account
 			if let account = core.defaultAccount {
-				core.removeAccountWithData(account: account)
+				core.removeAccount(account: account)
 				
 				// To remove all accounts use
 				core.clearAccounts()

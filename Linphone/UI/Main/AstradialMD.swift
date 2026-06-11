@@ -18,10 +18,10 @@ import linphonesw
 // MARK: - API config & keychain
 
 struct AstradialAPIConfig {
-	@AppStorage("astradial_api_base") static var storedBase: String = "https://stagepbx.astradial.com"
+	@AppStorage("astradial_api_base") static var storedBase: String = "https://devpbx.astradial.com"
 
 	static var base: String {
-		UserDefaults.standard.string(forKey: "astradial_api_base") ?? "https://stagepbx.astradial.com"
+		UserDefaults.standard.string(forKey: "astradial_api_base") ?? "https://devpbx.astradial.com"
 	}
 
 	// The Firebase login IS the credential: the app exchanges the
@@ -69,7 +69,9 @@ actor PlatformAuth {
 			let token: String
 			let user: PlatformUser?
 		}
-		let decoded = try JSONDecoder().decode(LoginResponse.self, from: data)
+		guard let decoded = try? JSONDecoder().decode(LoginResponse.self, from: data) else {
+			throw AstradialAPIError.decodeError(endpoint: "login", body: data)
+		}
 		token = decoded.token
 		expiry = Date.now.addingTimeInterval(23 * 3600)
 		if let user = decoded.user {
@@ -185,12 +187,20 @@ struct CDRResponse: Decodable {
 enum AstradialAPIError: LocalizedError {
 	case notConfigured
 	case http(Int)
+	case decode(String)
 
 	var errorDescription: String? {
 		switch self {
 		case .notConfigured: return "Sign in with your Astradial account to load company data."
 		case .http(let code): return "Astradial API error (HTTP \(code))."
+		case .decode(let detail): return "Unexpected server response — \(detail)"
 		}
+	}
+
+	static func decodeError(endpoint: String, body: Data) -> AstradialAPIError {
+		let prefix = String(decoding: body.prefix(120), as: UTF8.self)
+			.replacingOccurrences(of: "\n", with: " ")
+		return .decode("\(endpoint): \(prefix)")
 	}
 }
 
@@ -218,7 +228,9 @@ actor AstradialAPI {
 			if let http = response as? HTTPURLResponse, http.statusCode != 200 {
 				throw AstradialAPIError.http(http.statusCode)
 			}
-			let page = try JSONDecoder().decode(CDRResponse.self, from: data)
+			guard let page = try? JSONDecoder().decode(CDRResponse.self, from: data) else {
+				throw AstradialAPIError.decodeError(endpoint: "calls", body: data)
+			}
 			calls.append(contentsOf: page.data)
 			if page.data.isEmpty || page.pagination?.hasMore != true { break }
 			offset += 200
@@ -575,6 +587,9 @@ struct AnalyticsTabView: View {
 			}
 		}
 		.task { await viewModel.reload() }
+		.onChange(of: session.isSignedIn) { _, signedIn in
+			if signedIn { Task { await viewModel.reload() } }
+		}
 	}
 
 	private var dashboard: some View {
@@ -1098,7 +1113,7 @@ struct AstradialSettingsView: View {
 	@StateObject private var session = MDSession.shared
 	@StateObject private var sipViewModel = AccountLoginViewModel()
 
-	@AppStorage("astradial_api_base") private var apiBase = "https://stagepbx.astradial.com"
+	@AppStorage("astradial_api_base") private var apiBase = "https://devpbx.astradial.com"
 	@AppStorage("md_rupee_per_patient") private var rupeePerPatient = 150
 	@State private var sipRegistered = false
 	@State private var sipIdentity = ""

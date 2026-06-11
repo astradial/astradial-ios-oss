@@ -147,7 +147,10 @@ extension AstradialAPI {
 
 	func fetchTickets() async throws -> TicketsResponse {
 		let data = try await run(await ticketsRequest(path: "/api/v1/tickets?limit=100"))
-		return try JSONDecoder().decode(TicketsResponse.self, from: data)
+		guard let decoded = try? JSONDecoder().decode(TicketsResponse.self, from: data) else {
+			throw AstradialAPIError.decodeError(endpoint: "tickets", body: data)
+		}
+		return decoded
 	}
 
 	func fetchTicketEvents(id: String) async throws -> [TicketEvent] {

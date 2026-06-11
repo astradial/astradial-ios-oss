@@ -89,8 +89,6 @@ class AccountModel: ObservableObject {
 				self.computeNotificationsCount()
 			}, onChatRoomRead: { (_: Core, _: ChatRoom) in
 				self.computeNotificationsCount()
-			}, onMessageRetracted: { (_: Core, _: ChatRoom, _: ChatMessage) in
-				self.computeNotificationsCount()
 			}
 		)
 		core.addDelegate(delegate: coreDelegate!)
@@ -286,7 +284,7 @@ class AccountModel: ObservableObject {
 	func logout() {
 		CoreContext.shared.doOnCoreQueue { core in
 			Log.info("Account \(self.account.displayName()) has been removed")
-			core.removeAccountWithData(account: self.account)
+			core.removeAccount(account: self.account)
 			
 			if let authInfo = self.account.findAuthInfo() {
 				core.removeAuthInfo(info: authInfo)

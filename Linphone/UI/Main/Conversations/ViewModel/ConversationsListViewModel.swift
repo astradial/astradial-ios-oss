@@ -249,11 +249,6 @@ class ConversationsListViewModel: ObservableObject {
 							}
 						}
 					}
-				}, onMessageRetracted: { (core: Core, chatRoom: ChatRoom, message: ChatMessage) in
-					let idTmp = LinphoneUtils.getChatRoomId(room: chatRoom)
-					let model = self.conversationsList.first(where: { $0.id == idTmp }) ?? ConversationModel(chatRoom: chatRoom)
-					model.getContentTextMessage(chatRoom: chatRoom)
-					SharedMainViewModel.shared.updateUnreadMessagesCount()
 				}
 			)
 			core.addDelegate(delegate: self.coreConversationDelegate!)

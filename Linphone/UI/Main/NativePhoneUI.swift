@@ -13,6 +13,52 @@ import Contacts
 import ContactsUI
 import AVFoundation
 
+// MARK: - SDK compatibility shims
+// linphone-sdk stable >= 5.5.2 removed these members; the Linphone
+// screens using them are hidden in Astradial but still compile.
+
+extension Friend {
+	var isReadOnly: Bool { !inList() }
+}
+
+extension FriendList {
+	var isReadOnly: Bool { false }
+}
+
+extension ChatRoom {
+	// Document/media listing APIs removed upstream; chat UI is hidden in Astradial.
+	var documentContentsSize: Int { 0 }
+	func getDocumentContentsRange(begin: Int, end: Int) -> [Content] { [] }
+	var mediaContentsSize: Int { 0 }
+	func getMediaContentsRange(begin: Int, end: Int) -> [Content] { [] }
+	// Editing/composing additions from the beta SDK, absent in stable.
+	func createReplacesMessage(message: ChatMessage) throws -> ChatMessage { try createEmptyMessage() }
+	func stopComposing() {}
+	func composeTextMessage() {}
+	func retractMessage(message: ChatMessage) {}
+}
+
+extension Core {
+	// Chat file-management settings from the beta SDK, absent in stable.
+	var chatMessageFilesDirectories: [String] {
+		get { [] }
+		set {}
+	}
+	var chatMessageFilesDeletionEnabled: Bool {
+		get { false }
+		set {}
+	}
+}
+
+extension ChatMessage {
+	// Message editing/retraction feature not present in the stable SDK.
+	var isRetracted: Bool { false }
+	var isEditable: Bool { false }
+	var isRetractable: Bool { false }
+	var isEdited: Bool { false }
+	var eventLog: EventLog? { nil }
+}
+
 // MARK: - Dialing helper
 
 enum AstradialDialer {
@@ -300,28 +346,36 @@ struct KeypadButton: View {
 struct RecentsTabView: View {
 	@StateObject private var viewModel = HistoryListViewModel()
 	@State private var filter: RecentsFilter = .all
+	@State private var scope: RecentsScope = .device
 	@State private var searchText = ""
+	@State private var companyCalls: [CDRCall] = []
+	@State private var companyLoaded = false
 
 	enum RecentsFilter: String, CaseIterable {
 		case all = "All"
 		case missed = "Missed"
 	}
 
+	enum RecentsScope: String, CaseIterable {
+		case device = "This iPhone"
+		case company = "Company"
+	}
+
 	var body: some View {
 		NavigationStack {
-			List {
-				ForEach(groupedLogs) { group in
-					RecentsRow(group: group)
-						.contentShape(Rectangle())
-						.onTapGesture { AstradialDialer.call(group.latest.address) }
+			Group {
+				if scope == .company {
+					companyList
+				} else {
+					deviceList
 				}
-				.onDelete(perform: delete)
 			}
-			.listStyle(.plain)
 			.navigationTitle("Recents")
 			.searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
 			.toolbar {
-				ToolbarItem(placement: .topBarLeading) { EditButton() }
+				ToolbarItem(placement: .topBarLeading) {
+					if scope == .device { EditButton() }
+				}
 				ToolbarItem(placement: .principal) {
 					Picker("Filter", selection: $filter) {
 						ForEach(RecentsFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -331,26 +385,85 @@ struct RecentsTabView: View {
 				}
 				ToolbarItem(placement: .topBarTrailing) {
 					Menu {
-						Button(role: .destructive) {
-							viewModel.callLogsAddressToDelete = ""
-							viewModel.removeCallLogs()
-						} label: {
-							Label("Clear All Recents", systemImage: "trash")
+						Picker("Show", selection: $scope) {
+							Label("This iPhone", systemImage: "iphone").tag(RecentsScope.device)
+							Label("Company", systemImage: "building.2").tag(RecentsScope.company)
+						}
+						if scope == .device {
+							Button(role: .destructive) {
+								viewModel.callLogsAddressToDelete = ""
+								viewModel.removeCallLogs()
+							} label: {
+								Label("Clear All Recents", systemImage: "trash")
+							}
 						}
 					} label: {
 						Image(systemName: "line.3.horizontal.decrease")
 					}
 				}
 			}
-			.overlay {
-				if groupedLogs.isEmpty {
-					ContentUnavailableView(
-						filter == .missed ? "No Missed Calls" : "No Recents",
-						systemImage: "phone.arrow.up.right"
-					)
+			.onChange(of: scope) { _, newScope in
+				if newScope == .company && companyCalls.isEmpty {
+					Task { await loadCompany() }
 				}
 			}
 		}
+	}
+
+	private var deviceList: some View {
+		List {
+			ForEach(groupedLogs) { group in
+				RecentsRow(group: group)
+					.contentShape(Rectangle())
+					.onTapGesture { AstradialDialer.call(group.latest.address) }
+			}
+			.onDelete(perform: delete)
+		}
+		.listStyle(.plain)
+		.overlay {
+			if groupedLogs.isEmpty {
+				ContentUnavailableView(
+					filter == .missed ? "No Missed Calls" : "No Calls on This iPhone",
+					systemImage: "phone.arrow.up.right",
+					description: Text("Calls you make or receive on this device appear here. Use the filter menu to see all company calls.")
+				)
+			}
+		}
+	}
+
+	private var companyList: some View {
+		List(filteredCompany) { call in
+			CompanyCallRow(call: call)
+		}
+		.listStyle(.plain)
+		.refreshable { await loadCompany() }
+		.overlay {
+			if filteredCompany.isEmpty {
+				ContentUnavailableView(
+					companyLoaded ? "No Company Calls" : "Loading…",
+					systemImage: "building.2"
+				)
+			}
+		}
+	}
+
+	private var filteredCompany: [CDRCall] {
+		var calls = companyCalls
+		if filter == .missed { calls = calls.filter(\.isMissed) }
+		if !searchText.isEmpty {
+			calls = calls.filter {
+				($0.src ?? "").localizedCaseInsensitiveContains(searchText)
+					|| ($0.dst ?? "").localizedCaseInsensitiveContains(searchText)
+			}
+		}
+		return calls
+	}
+
+	private func loadCompany() async {
+		let from = Calendar.current.date(byAdding: .day, value: -3, to: .now)!
+		let fetched = (try? await AstradialAPI.shared.fetchCalls(from: from, to: .now, maxRecords: 600)) ?? []
+		companyCalls = PulseViewModel.dedupSessions(fetched).sorted { $0.date > $1.date }
+		companyLoaded = true
 	}
 
 	private var filteredLogs: [HistoryModel] {
@@ -386,6 +499,66 @@ struct RecentsTabView: View {
 	private func delete(at offsets: IndexSet) {
 		for index in offsets {
 			groupedLogs[index].logs.forEach { viewModel.removeCallLog(historyModel: $0) }
+		}
+	}
+}
+
+struct CompanyCallRow: View {
+	let call: CDRCall
+	@State private var player: AVPlayer?
+	@State private var playing = false
+
+	var body: some View {
+		HStack(spacing: 12) {
+			InitialsAvatar(name: call.src ?? "?", size: 44)
+			VStack(alignment: .leading, spacing: 2) {
+				Text(call.src ?? "Unknown")
+					.font(.body.weight(.semibold))
+					.foregroundStyle(call.isMissed ? Color.red : Color.primary)
+					.lineLimit(1)
+				HStack(spacing: 4) {
+					Image(systemName: call.direction == "outbound" ? "arrow.up.right" : "arrow.down.left")
+						.font(.caption2.weight(.bold))
+					Text(call.queueName ?? (call.answeredBy.map { "ext \($0)" } ?? "company"))
+						.font(.subheadline)
+						.lineLimit(1)
+				}
+				.foregroundStyle(.secondary)
+			}
+			Spacer()
+			Text(relativeDate(time_t(call.date.timeIntervalSince1970)))
+				.font(.subheadline)
+				.foregroundStyle(.secondary)
+			if call.recordingUrl != nil {
+				Button {
+					togglePlayback()
+				} label: {
+					Image(systemName: playing ? "stop.circle.fill" : "play.circle")
+						.font(.system(size: 22))
+						.foregroundStyle(Color.accentColor)
+				}
+				.buttonStyle(.plain)
+			}
+		}
+		.padding(.vertical, 2)
+	}
+
+	private func togglePlayback() {
+		if playing {
+			player?.pause()
+			playing = false
+			return
+		}
+		guard let path = call.recordingUrl,
+			  let url = URL(string: path.hasPrefix("http") ? path : AstradialAPIConfig.base + path) else { return }
+		Task {
+			guard let token = try? await PlatformAuth.shared.bearerToken() else { return }
+			let asset = AVURLAsset(url: url, options: [
+				"AVURLAssetHTTPHeaderFieldsKey": ["Authorization": "Bearer \(token)"]
+			])
+			player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+			player?.play()
+			playing = true
 		}
 	}
 }
