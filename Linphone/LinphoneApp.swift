@@ -266,17 +266,9 @@ struct RootView: View {
 	var body: some View {
 		Group {
 			if coreContext.coreHasStartedOnce {
-				if showWelcome {
+				if showWelcome || showAssistant {
 					ZStack {
-						WelcomeView()
-						ToastView().zIndex(3)
-					}
-					.onAppear {
-						appDelegate.coreContext = coreContext
-					}
-				} else if showAssistant {
-					ZStack {
-						AssistantView()
+						AstradialOnboardingView()
 						ToastView().zIndex(3)
 					}
 					.onAppear {
@@ -346,14 +338,22 @@ struct RootView: View {
 	}
 	
 	
+	// Astradial onboarding replaces Linphone's Welcome + Assistant. Once
+	// completed (login or skip), neither shows again even without a SIP
+	// account — Settings handles late SIP setup.
+	var onboardingDone: Bool {
+		UserDefaults.standard.bool(forKey: "astradial_onboarding_done")
+	}
+
 	var showWelcome: Bool {
-		!sharedMainViewModel.welcomeViewDisplayed
+		!onboardingDone && !sharedMainViewModel.welcomeViewDisplayed
 	}
 
 	var showAssistant: Bool {
-		(coreContext.codeScannerIsOpen && coreContext.accounts.isEmpty)
-		|| (coreContext.coreIsStarted && coreContext.accounts.isEmpty)
-		|| sharedMainViewModel.displayProfileMode
+		!onboardingDone && (
+			(coreContext.codeScannerIsOpen && coreContext.accounts.isEmpty)
+			|| (coreContext.coreIsStarted && coreContext.accounts.isEmpty)
+		)
 	}
 }
 

@@ -9,6 +9,7 @@
  */
 
 import SwiftUI
+import UserNotifications
 
 // MARK: - Models
 
@@ -172,6 +173,9 @@ extension AstradialAPI {
 
 @MainActor
 final class TicketsViewModel: ObservableObject {
+	// Shared so the tab bar badge updates without visiting the tab.
+	static let shared = TicketsViewModel()
+
 	enum Filter: String, CaseIterable {
 		case open = "Open"
 		case inProgress = "In Progress"
@@ -186,6 +190,10 @@ final class TicketsViewModel: ObservableObject {
 	@Published var errorMessage: String?
 	@Published var updateError: String?
 
+	var openCount: Int {
+		counts?.open ?? tickets.filter { $0.status == "open" }.count
+	}
+
 	var filtered: [Ticket] {
 		switch filter {
 		case .open: return tickets.filter { $0.status == "open" }
@@ -199,10 +207,11 @@ final class TicketsViewModel: ObservableObject {
 		// Demo data only when no API key is configured; on real errors keep
 		// last-known-good tickets and surface the failure.
 		guard AstradialAPIConfig.isConfigured else {
-			tickets = Self.sample
+			tickets = Self.sampleTickets
 			counts = TicketStatusCounts(open: 3, inProgress: 1, closed: 2)
 			isSampleData = true
 			errorMessage = nil
+			updateSystemBadge()
 			return
 		}
 		do {
@@ -214,6 +223,17 @@ final class TicketsViewModel: ObservableObject {
 		} catch {
 			isSampleData = false
 			errorMessage = error.localizedDescription
+		}
+		updateSystemBadge()
+	}
+
+	// Mirrors the open-ticket count onto the home-screen app icon,
+	// like the Phone app's missed-call badge.
+	private func updateSystemBadge() {
+		let open = openCount
+		let center = UNUserNotificationCenter.current()
+		center.requestAuthorization(options: [.badge]) { _, _ in
+			center.setBadgeCount(open)
 		}
 	}
 
@@ -227,7 +247,7 @@ final class TicketsViewModel: ObservableObject {
 		await reload()
 	}
 
-	static let sample: [Ticket] = [
+	nonisolated static let sampleTickets: [Ticket] = [
 		Ticket(id: "1", callerNumber: "9944421125", callerName: "Saravanan", source: "missed_call",
 			   priority: "urgent", status: "open", missedCount: 4,
 			   lastCallAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-1800)),
@@ -262,7 +282,7 @@ final class TicketsViewModel: ObservableObject {
 // MARK: - Views
 
 struct TicketsTabView: View {
-	@StateObject private var viewModel = TicketsViewModel()
+	@ObservedObject private var viewModel = TicketsViewModel.shared
 	@State private var showNewTicket = false
 
 	var body: some View {

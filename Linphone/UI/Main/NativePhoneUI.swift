@@ -31,9 +31,14 @@ enum AstradialDialer {
 
 struct NativePhoneRootView: View {
 	@ObservedObject private var telecomManager = TelecomManager.shared
+	@ObservedObject private var ticketsViewModel = TicketsViewModel.shared
 	@StateObject private var callViewModel = CallViewModel()
 
-	@State private var selectedTab = Int(ProcessInfo.processInfo.environment["DEFAULT_TAB"] ?? "3") ?? 3
+	@State private var selectedTab: Int = {
+		if let env = ProcessInfo.processInfo.environment["DEFAULT_TAB"], let tab = Int(env) { return tab }
+		// Owners who signed in during onboarding land on Analytics.
+		return UserDefaults.standard.object(forKey: "astradial_initial_tab") as? Int ?? 3
+	}()
 
 	// Stub bindings required by the reused Linphone CallView.
 	@State private var fullscreenVideo = false
@@ -47,7 +52,7 @@ struct NativePhoneRootView: View {
 		ZStack {
 			TabView(selection: $selectedTab) {
 				AnalyticsTabView()
-					.tabItem { Label("Analytics", systemImage: "chart.bar.xaxis") }
+					.tabItem { Label("Analytics", systemImage: "waveform.path.ecg") }
 					.tag(0)
 				RecentsTabView()
 					.tabItem { Label("Recents", systemImage: "clock.fill") }
@@ -59,9 +64,11 @@ struct NativePhoneRootView: View {
 					.tabItem { Label("Keypad", systemImage: "circle.grid.3x3.fill") }
 					.tag(3)
 				TicketsTabView()
-					.tabItem { Label("Tickets", systemImage: "ticket.fill") }
+					.tabItem { Label("Tickets", systemImage: "phone.arrow.down.left.fill") }
+					.badge(ticketsViewModel.openCount)
 					.tag(4)
 			}
+			.task { await TicketsViewModel.shared.reload() }
 
 			if telecomManager.callDisplayed
 				&& ((telecomManager.callInProgress && telecomManager.outgoingCallStarted) || telecomManager.callConnected)
