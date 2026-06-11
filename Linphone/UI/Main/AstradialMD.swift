@@ -24,12 +24,64 @@ struct AstradialAPIConfig {
 		UserDefaults.standard.string(forKey: "astradial_api_base") ?? "https://stagepbx.astradial.com"
 	}
 
-	static var apiKey: String {
-		get { KeychainHelper.read(key: "astradial_api_key") ?? "" }
-		set { KeychainHelper.write(key: "astradial_api_key", value: newValue) }
+	// The Firebase login IS the credential: the app exchanges the
+	// Firebase ID token for an org-scoped platform JWT via
+	// POST /api/v1/auth/user-login. No API keys on devices.
+	static var isConfigured: Bool { Auth.auth().currentUser != nil }
+}
+
+struct PlatformUser: Decodable, Sendable {
+	let role: String?
+	let name: String?
+	let email: String?
+	let orgName: String?
+	let ext: String?
+
+	enum CodingKeys: String, CodingKey {
+		case role, name, email
+		case orgName = "org_name"
+		case ext = "extension"
+	}
+}
+
+/// Exchanges the Firebase ID token for the platform's role-enriched JWT
+/// (24h) and caches it. All API calls authenticate with this JWT.
+actor PlatformAuth {
+	static let shared = PlatformAuth()
+
+	private var token: String?
+	private var expiry = Date.distantPast
+
+	func bearerToken() async throws -> String {
+		if let token, expiry > Date.now.addingTimeInterval(120) { return token }
+		guard let firebaseUser = Auth.auth().currentUser else { throw AstradialAPIError.notConfigured }
+		let idToken = try await firebaseUser.getIDToken()
+
+		var request = URLRequest(url: URL(string: "\(AstradialAPIConfig.base)/api/v1/auth/user-login")!)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.httpBody = try JSONSerialization.data(withJSONObject: ["firebase_token": idToken])
+		let (data, response) = try await URLSession.shared.data(for: request)
+		guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+			throw AstradialAPIError.http((response as? HTTPURLResponse)?.statusCode ?? 0)
+		}
+		struct LoginResponse: Decodable {
+			let token: String
+			let user: PlatformUser?
+		}
+		let decoded = try JSONDecoder().decode(LoginResponse.self, from: data)
+		token = decoded.token
+		expiry = Date.now.addingTimeInterval(23 * 3600)
+		if let user = decoded.user {
+			await MDSession.shared.applyPlatformUser(user)
+		}
+		return decoded.token
 	}
 
-	static var isConfigured: Bool { !apiKey.isEmpty }
+	func reset() {
+		token = nil
+		expiry = .distantPast
+	}
 }
 
 enum KeychainHelper {
@@ -136,7 +188,7 @@ enum AstradialAPIError: LocalizedError {
 
 	var errorDescription: String? {
 		switch self {
-		case .notConfigured: return "API key not configured. Open Settings to connect."
+		case .notConfigured: return "Sign in with your Astradial account to load company data."
 		case .http(let code): return "Astradial API error (HTTP \(code))."
 		}
 	}
@@ -161,7 +213,7 @@ actor AstradialAPI {
 				URLQueryItem(name: "date_to", value: dateFormatter.string(from: to))
 			]
 			var request = URLRequest(url: components.url!)
-			request.setValue(AstradialAPIConfig.apiKey, forHTTPHeaderField: "X-API-Key")
+			request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
 			let (data, response) = try await URLSession.shared.data(for: request)
 			if let http = response as? HTTPURLResponse, http.statusCode != 200 {
 				throw AstradialAPIError.http(http.statusCode)
@@ -582,10 +634,10 @@ struct AnalyticsTabView: View {
 	private var sampleBanner: some View {
 		HStack(spacing: 8) {
 			Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-			Text("Demo data — connect the Astradial API to see your hospital.")
+			Text("Demo data — sign in to see your hospital.")
 				.font(.footnote)
 			Spacer()
-			Button("Connect") { showSettings = true }
+			Button("Sign In") { MDSession.shared.demoMode = false }
 				.font(.footnote.weight(.semibold))
 		}
 		.padding(10)
@@ -923,6 +975,8 @@ final class MDSession: ObservableObject {
 
 	@Published var isSignedIn = false
 	@Published var email: String?
+	@Published var role: String?
+	@Published var orgName: String?
 	@Published var demoMode: Bool = {
 #if DEBUG
 		return ProcessInfo.processInfo.environment["MD_DEMO"] == "1"
@@ -953,6 +1007,18 @@ final class MDSession: ObservableObject {
 
 	func signOut() {
 		try? Auth.auth().signOut()
+		role = nil
+		orgName = nil
+		Task { await PlatformAuth.shared.reset() }
+	}
+
+	func applyPlatformUser(_ user: PlatformUser) {
+		role = user.role
+		orgName = user.orgName
+	}
+
+	var isOwner: Bool {
+		["owner", "admin"].contains((role ?? "").lowercased())
 	}
 }
 
@@ -1034,7 +1100,6 @@ struct AstradialSettingsView: View {
 
 	@AppStorage("astradial_api_base") private var apiBase = "https://stagepbx.astradial.com"
 	@AppStorage("md_rupee_per_patient") private var rupeePerPatient = 150
-	@State private var apiKey = AstradialAPIConfig.apiKey
 	@State private var sipRegistered = false
 	@State private var sipIdentity = ""
 	@State private var showScanner = false
@@ -1047,7 +1112,8 @@ struct AstradialSettingsView: View {
 						InitialsAvatar(name: session.displayName, size: 52)
 						VStack(alignment: .leading) {
 							Text(session.email ?? "Not signed in").font(.body.weight(.medium))
-							Text("Managing Director").font(.footnote).foregroundStyle(.secondary)
+							Text(session.orgName.map { "\($0) · \(session.role ?? "member")" } ?? "Managing Director")
+								.font(.footnote).foregroundStyle(.secondary)
 						}
 					}
 					if session.isSignedIn {
@@ -1090,14 +1156,10 @@ struct AstradialSettingsView: View {
 					TextField("API Base URL", text: $apiBase)
 						.autocapitalization(.none)
 						.keyboardType(.URL)
-					SecureField("API Key (ak_…)", text: $apiKey)
-						.onChange(of: apiKey) { _, newValue in
-							AstradialAPIConfig.apiKey = newValue
-						}
 				} header: {
-					Text("Astradial API")
+					Text("Astradial Server")
 				} footer: {
-					Text("Create an API key in the dashboard under API & Webhooks → API Keys. Used for analytics, tickets and call reports. Stored in the keychain.")
+					Text("Analytics, tickets and reports are loaded with your signed-in account — no API keys needed.")
 				}
 
 				Section {

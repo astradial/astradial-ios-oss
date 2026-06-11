@@ -125,11 +125,11 @@ struct TicketEventsResponse: Decodable {
 // MARK: - API
 
 extension AstradialAPI {
-	private func ticketsRequest(path: String, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
+	private func ticketsRequest(path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> URLRequest {
 		guard AstradialAPIConfig.isConfigured else { throw AstradialAPIError.notConfigured }
 		var request = URLRequest(url: URL(string: "\(AstradialAPIConfig.base)\(path)")!)
 		request.httpMethod = method
-		request.setValue(AstradialAPIConfig.apiKey, forHTTPHeaderField: "X-API-Key")
+		request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
 		if let body {
 			request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 			request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -146,21 +146,21 @@ extension AstradialAPI {
 	}
 
 	func fetchTickets() async throws -> TicketsResponse {
-		let data = try await run(ticketsRequest(path: "/api/v1/tickets?limit=100"))
+		let data = try await run(await ticketsRequest(path: "/api/v1/tickets?limit=100"))
 		return try JSONDecoder().decode(TicketsResponse.self, from: data)
 	}
 
 	func fetchTicketEvents(id: String) async throws -> [TicketEvent] {
-		let data = try await run(ticketsRequest(path: "/api/v1/tickets/\(id)/events"))
+		let data = try await run(await ticketsRequest(path: "/api/v1/tickets/\(id)/events"))
 		return try JSONDecoder().decode(TicketEventsResponse.self, from: data).list
 	}
 
 	func patchTicket(id: String, fields: [String: Any]) async throws {
-		_ = try await run(ticketsRequest(path: "/api/v1/tickets/\(id)", method: "PATCH", body: fields))
+		_ = try await run(await ticketsRequest(path: "/api/v1/tickets/\(id)", method: "PATCH", body: fields))
 	}
 
 	func createTicket(callerNumber: String, callerName: String, summary: String) async throws {
-		_ = try await run(ticketsRequest(path: "/api/v1/tickets", method: "POST", body: [
+		_ = try await run(await ticketsRequest(path: "/api/v1/tickets", method: "POST", body: [
 			"caller_number": callerNumber,
 			"caller_name": callerName,
 			"source": "manual",
