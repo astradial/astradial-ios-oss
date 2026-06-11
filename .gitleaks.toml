@@ -1,0 +1,9 @@
+# Astradial secret-scanning config.
+title = "astradial-ios gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Upstream Linphone placeholder config (public in their repo); ours is skip-worktree'd and never committed."
+paths = ['''GoogleService-Info\.plist''']
