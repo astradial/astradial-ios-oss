@@ -42,6 +42,7 @@
 		AD00000000000000000000A3 /* AstradialMD.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000A4 /* AstradialMD.swift */; };
 		AD00000000000000000000A5 /* TicketsUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000A6 /* TicketsUI.swift */; };
 		AD00000000000000000000A7 /* OnboardingUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000A8 /* OnboardingUI.swift */; };
+		AD00000000000000000000A9 /* NativeCallUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD00000000000000000000AA /* NativeCallUI.swift */; };
 		AD00000000000000000000B2 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AD00000000000000000000B1 /* FirebaseAuth */; };
 		C60E8F192C0F649200A06DB8 /* UIApplicationExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = C60E8F182C0F649200A06DB8 /* UIApplicationExtension.swift */; };
 		C618BF562D75CA03005A00E0 /* linphonesw in Frameworks */ = {isa = PBXBuildFile; productRef = C618BF552D75CA03005A00E0 /* linphonesw */; };
@@ -326,6 +327,7 @@
 		AD00000000000000000000A4 /* AstradialMD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AstradialMD.swift; sourceTree = "<group>"; };
 		AD00000000000000000000A6 /* TicketsUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketsUI.swift; sourceTree = "<group>"; };
 		AD00000000000000000000A8 /* OnboardingUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingUI.swift; sourceTree = "<group>"; };
+		AD00000000000000000000AA /* NativeCallUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallUI.swift; sourceTree = "<group>"; };
 		C60E8F182C0F649200A06DB8 /* UIApplicationExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIApplicationExtension.swift; sourceTree = "<group>"; };
 		C62817272C1B389700DBA646 /* SideMenuAccountRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideMenuAccountRow.swift; sourceTree = "<group>"; };
 		C628172D2C1C3A3600DBA646 /* AccountExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountExtension.swift; sourceTree = "<group>"; };
@@ -860,6 +862,7 @@
 				AD00000000000000000000A4 /* AstradialMD.swift */,
 				AD00000000000000000000A6 /* TicketsUI.swift */,
 				AD00000000000000000000A8 /* OnboardingUI.swift */,
+				AD00000000000000000000AA /* NativeCallUI.swift */,
 			);
 			path = Main;
 			sourceTree = "<group>";
@@ -1656,6 +1659,7 @@
 				AD00000000000000000000A3 /* AstradialMD.swift in Sources */,
 				AD00000000000000000000A5 /* TicketsUI.swift in Sources */,
 				AD00000000000000000000A7 /* OnboardingUI.swift in Sources */,
+				AD00000000000000000000A9 /* NativeCallUI.swift in Sources */,
 				D71FCA832AE14D6E00D2E43E /* ContactFragment.swift in Sources */,
 				D7C3650C2AF0084000FE6142 /* EditContactViewModel.swift in Sources */,
 				D78E062A2BEA698E00CE3783 /* MediaEncryptedSheetBottomSheet.swift in Sources */,
@@ -2275,7 +2279,7 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Linphone/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Linphone;
+				INFOPLIST_KEY_CFBundleDisplayName = Astradial;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = YES;
 				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "b5cb085f-772a-4a4f-8c77-5d1332b1f93f";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Deprecated - Prior to iOS 17 full calendar access is required";
@@ -2337,7 +2341,7 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Linphone/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Linphone;
+				INFOPLIST_KEY_CFBundleDisplayName = Astradial;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = YES;
 				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "b5cb085f-772a-4a4f-8c77-5d1332b1f93f";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Deprecated - Prior to iOS 17 full calendar access is required";

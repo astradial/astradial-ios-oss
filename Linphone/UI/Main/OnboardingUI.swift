@@ -113,6 +113,8 @@ struct AstradialOnboardingView: View {
 struct OnboardingSIPView: View {
 	@StateObject private var sipViewModel = AccountLoginViewModel()
 	@ObservedObject private var coreContext = CoreContext.shared
+	@State private var showScanner = false
+	@State private var scanError = false
 	let onDone: () -> Void
 
 	var body: some View {
@@ -122,6 +124,18 @@ struct OnboardingSIPView: View {
 					.font(.footnote)
 					.foregroundStyle(.secondary)
 					.listRowBackground(Color.clear)
+			}
+			Section {
+				Button {
+					showScanner = true
+				} label: {
+					Label("Scan SIP QR Code", systemImage: "qrcode.viewfinder")
+				}
+			} footer: {
+				if scanError {
+					Text("That QR code isn't a valid Astradial SIP code.")
+						.foregroundStyle(.red)
+				}
 			}
 			Section("SIP Account") {
 				TextField("Username", text: $sipViewModel.username)
@@ -158,6 +172,20 @@ struct OnboardingSIPView: View {
 		}
 		.navigationTitle("Connect Your Line")
 		.navigationBarTitleDisplayMode(.inline)
+		.sheet(isPresented: $showScanner) {
+			QRScannerSheet { code in
+				if let credentials = SIPProvisioning.parse(code) {
+					scanError = false
+					sipViewModel.username = credentials.username
+					sipViewModel.passwd = credentials.password
+					sipViewModel.domain = credentials.domain
+					sipViewModel.transportType = credentials.transport
+					sipViewModel.login()
+				} else {
+					scanError = true
+				}
+			}
+		}
 		.onAppear {
 			if sipViewModel.domain == "sip.linphone.org" {
 				sipViewModel.domain = ""

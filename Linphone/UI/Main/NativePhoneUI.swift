@@ -40,14 +40,6 @@ struct NativePhoneRootView: View {
 		return UserDefaults.standard.object(forKey: "astradial_initial_tab") as? Int ?? 3
 	}()
 
-	// Stub bindings required by the reused Linphone CallView.
-	@State private var fullscreenVideo = false
-	@State private var isShowStartCallFragment = false
-	@State private var isShowConversationFragment = false
-	@State private var isShowStartCallGroupPopup = false
-	@State private var isShowEditContactFragment = false
-	@State private var isShowScheduleMeetingFragment = false
-
 	var body: some View {
 		ZStack {
 			TabView(selection: $selectedTab) {
@@ -73,15 +65,8 @@ struct NativePhoneRootView: View {
 			if telecomManager.callDisplayed
 				&& ((telecomManager.callInProgress && telecomManager.outgoingCallStarted) || telecomManager.callConnected)
 				&& !telecomManager.meetingWaitingRoomDisplayed {
-				CallView(
-					fullscreenVideo: $fullscreenVideo,
-					isShowStartCallFragment: $isShowStartCallFragment,
-					isShowConversationFragment: $isShowConversationFragment,
-					isShowStartCallGroupPopup: $isShowStartCallGroupPopup,
-					isShowEditContactFragment: $isShowEditContactFragment,
-					isShowScheduleMeetingFragment: $isShowScheduleMeetingFragment
-				)
-				.environmentObject(callViewModel)
+				NativeCallView()
+					.environmentObject(callViewModel)
 				.zIndex(5)
 				.transition(.scale.combined(with: .move(edge: .top)))
 				.onAppear {

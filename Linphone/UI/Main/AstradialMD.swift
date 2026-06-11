@@ -1037,6 +1037,7 @@ struct AstradialSettingsView: View {
 	@State private var apiKey = AstradialAPIConfig.apiKey
 	@State private var sipRegistered = false
 	@State private var sipIdentity = ""
+	@State private var showScanner = false
 
 	var body: some View {
 		NavigationStack {
@@ -1074,6 +1075,11 @@ struct AstradialSettingsView: View {
 						refreshSIPStatus()
 					}
 					.disabled(sipViewModel.username.isEmpty || sipViewModel.domain.isEmpty)
+					Button {
+						showScanner = true
+					} label: {
+						Label("Scan SIP QR Code", systemImage: "qrcode.viewfinder")
+					}
 				} header: {
 					Text("SIP Account (Linphone)")
 				} footer: {
@@ -1115,6 +1121,18 @@ struct AstradialSettingsView: View {
 				}
 			}
 			.onAppear(perform: refreshSIPStatus)
+			.sheet(isPresented: $showScanner) {
+				QRScannerSheet { code in
+					if let credentials = SIPProvisioning.parse(code) {
+						sipViewModel.username = credentials.username
+						sipViewModel.passwd = credentials.password
+						sipViewModel.domain = credentials.domain
+						sipViewModel.transportType = credentials.transport
+						sipViewModel.login()
+						refreshSIPStatus()
+					}
+				}
+			}
 		}
 	}
 
