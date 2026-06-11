@@ -6,9 +6,12 @@ on:
   push:
     branches: [astradial]
 
+# CI runs ONLY on the public OSS repo: Actions are free & unlimited there.
+# The private mirror consumes zero minutes (GitHub Free plan friendly).
 jobs:
   secret-scan:
     name: Secret scan (gitleaks)
+    if: github.repository == 'astradial/astradial-ios-oss'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +23,7 @@ jobs:
 
   build:
     name: Build (iOS Simulator)
+    if: github.repository == 'astradial/astradial-ios-oss'
     runs-on: macos-15
     timeout-minutes: 90
     steps:
