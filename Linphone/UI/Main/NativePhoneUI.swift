@@ -78,6 +78,7 @@ enum AstradialDialer {
 struct NativePhoneRootView: View {
 	@ObservedObject private var telecomManager = TelecomManager.shared
 	@ObservedObject private var ticketsViewModel = TicketsViewModel.shared
+	@ObservedObject private var session = MDSession.shared
 	@StateObject private var callViewModel = CallViewModel()
 
 	@State private var selectedTab: Int = {
@@ -89,9 +90,12 @@ struct NativePhoneRootView: View {
 	var body: some View {
 		ZStack {
 			TabView(selection: $selectedTab) {
-				AnalyticsTabView()
-					.tabItem { Label("Analytics", systemImage: "waveform.path.ecg") }
-					.tag(0)
+				// Analytics + Tickets are company tools — signed-in users only.
+				if session.isSignedIn {
+					AnalyticsTabView()
+						.tabItem { Label("Analytics", systemImage: "waveform.path.ecg") }
+						.tag(0)
+				}
 				RecentsTabView()
 					.tabItem { Label("Recents", systemImage: "clock.fill") }
 					.tag(1)
@@ -101,12 +105,18 @@ struct NativePhoneRootView: View {
 				KeypadTabView()
 					.tabItem { Label("Keypad", systemImage: "circle.grid.3x3.fill") }
 					.tag(3)
-				TicketsTabView()
-					.tabItem { Label("Tickets", systemImage: "phone.arrow.down.left.fill") }
-					.badge(ticketsViewModel.openCount)
-					.tag(4)
+				if session.isSignedIn {
+					TicketsTabView()
+						.tabItem { Label("Tickets", systemImage: "phone.arrow.down.left.fill") }
+						.badge(ticketsViewModel.openCount)
+						.tag(4)
+				}
 			}
 			.task { await TicketsViewModel.shared.reload() }
+			.onChange(of: session.isSignedIn) { _, signedIn in
+				selectedTab = signedIn ? 0 : 3
+				Task { await TicketsViewModel.shared.reload() }
+			}
 
 			if telecomManager.callDisplayed
 				&& ((telecomManager.callInProgress && telecomManager.outgoingCallStarted) || telecomManager.callConnected)
@@ -171,6 +181,7 @@ struct InitialsAvatar: View {
 struct KeypadTabView: View {
 	@State private var number = ""
 	@State private var accountInitial = ""
+	@State private var showSettings = false
 
 	private let keys: [[(digit: String, letters: String)]] = [
 		[("1", " "), ("2", "ABC"), ("3", "DEF")],
@@ -220,6 +231,18 @@ struct KeypadTabView: View {
 	}
 
 	private var accountChip: some View {
+		Button {
+			showSettings = true
+		} label: {
+			chipLabel
+		}
+		.buttonStyle(.plain)
+		.sheet(isPresented: $showSettings) {
+			AstradialSettingsView()
+		}
+	}
+
+	private var chipLabel: some View {
 		HStack(spacing: 4) {
 			RoundedRectangle(cornerRadius: 8, style: .continuous)
 				.fill(Color.accentColor)

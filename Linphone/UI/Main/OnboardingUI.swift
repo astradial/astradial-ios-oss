@@ -68,9 +68,11 @@ struct AstradialOnboardingView: View {
 	private var choiceStep: some View {
 		VStack(spacing: 18) {
 			Spacer()
-			Image(systemName: "phone.badge.waveform.fill")
-				.font(.system(size: 56))
-				.foregroundStyle(.tint)
+			Image("AstradialLogo")
+				.resizable()
+				.scaledToFit()
+				.frame(width: 110, height: 110)
+				.clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 			Text("Astradial Phone")
 				.font(.largeTitle.weight(.bold))
 			Text("Your hospital's calls — dialer, tickets and the MD Pulse dashboard in one place.")
@@ -187,10 +189,9 @@ struct OnboardingSIPView: View {
 			}
 		}
 		.onAppear {
-			if sipViewModel.domain == "sip.linphone.org" {
-				sipViewModel.domain = ""
+			if sipViewModel.domain.isEmpty || sipViewModel.domain == "sip.linphone.org" {
+				sipViewModel.domain = "devsip.astradial.com"
 			}
-			sipViewModel.transportType = "UDP"
 		}
 	}
 }

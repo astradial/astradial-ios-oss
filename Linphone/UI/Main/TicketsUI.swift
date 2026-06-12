@@ -189,7 +189,6 @@ final class TicketsViewModel: ObservableObject {
 	@Published var tickets: [Ticket] = []
 	@Published var counts: TicketStatusCounts?
 	@Published var filter: Filter = .open
-	@Published var isSampleData = true
 	@Published var errorMessage: String?
 	@Published var updateError: String?
 
@@ -207,12 +206,10 @@ final class TicketsViewModel: ObservableObject {
 	}
 
 	func reload() async {
-		// Demo data only when no API key is configured; on real errors keep
-		// last-known-good tickets and surface the failure.
+		// Signed-in users only; on errors keep last-known-good tickets.
 		guard AstradialAPIConfig.isConfigured else {
-			tickets = Self.sampleTickets
-			counts = TicketStatusCounts(open: 3, inProgress: 1, closed: 2)
-			isSampleData = true
+			tickets = []
+			counts = nil
 			errorMessage = nil
 			updateSystemBadge()
 			return
@@ -221,10 +218,8 @@ final class TicketsViewModel: ObservableObject {
 			let response = try await AstradialAPI.shared.fetchTickets()
 			tickets = response.list
 			counts = response.statusCounts
-			isSampleData = false
 			errorMessage = nil
 		} catch {
-			isSampleData = false
 			errorMessage = error.localizedDescription
 		}
 		updateSystemBadge()
@@ -241,7 +236,7 @@ final class TicketsViewModel: ObservableObject {
 	}
 
 	func set(_ ticket: Ticket, fields: [String: Any]) async {
-		guard !isSampleData else { return }
+		guard AstradialAPIConfig.isConfigured else { return }
 		do {
 			try await AstradialAPI.shared.patchTicket(id: ticket.id, fields: fields)
 		} catch {
@@ -250,36 +245,6 @@ final class TicketsViewModel: ObservableObject {
 		await reload()
 	}
 
-	nonisolated static let sampleTickets: [Ticket] = [
-		Ticket(id: "1", callerNumber: "9944421125", callerName: "Saravanan", source: "missed_call",
-			   priority: "urgent", status: "open", missedCount: 4,
-			   lastCallAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-1800)),
-			   closedAt: nil, callbackFoundAt: nil, callbackDurationSec: nil, summary: nil),
-		Ticket(id: "2", callerNumber: "9842726558", callerName: nil, source: "queue_timeout",
-			   priority: "high", status: "open", missedCount: 2,
-			   lastCallAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-7200)),
-			   closedAt: nil,
-			   callbackFoundAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-3600)),
-			   callbackDurationSec: 49, summary: nil),
-		Ticket(id: "3", callerNumber: "9677949475", callerName: "Thangavelu Hospital", source: "missed_call",
-			   priority: "normal", status: "open", missedCount: 1,
-			   lastCallAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-9000)),
-			   closedAt: nil, callbackFoundAt: nil, callbackDurationSec: nil, summary: nil),
-		Ticket(id: "4", callerNumber: "9876501234", callerName: "Kailash", source: "missed_call",
-			   priority: "normal", status: "in_progress", missedCount: 1,
-			   lastCallAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-86000)),
-			   closedAt: nil, callbackFoundAt: nil, callbackDurationSec: nil, summary: nil),
-		Ticket(id: "5", callerNumber: "9123456780", callerName: nil, source: "manual",
-			   priority: "normal", status: "closed", missedCount: 1,
-			   lastCallAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-172800)),
-			   closedAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-86400)),
-			   callbackFoundAt: nil, callbackDurationSec: nil, summary: "Asked for pricing brochure"),
-		Ticket(id: "6", callerNumber: "9000011111", callerName: "Front Desk", source: "missed_call",
-			   priority: "high", status: "closed", missedCount: 3,
-			   lastCallAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-259200)),
-			   closedAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-172800)),
-			   callbackFoundAt: nil, callbackDurationSec: nil, summary: nil)
-	]
 }
 
 // MARK: - Views
@@ -291,16 +256,6 @@ struct TicketsTabView: View {
 	var body: some View {
 		NavigationStack {
 			List {
-				if viewModel.isSampleData {
-					Section {
-						HStack(spacing: 8) {
-							Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-							Text("Sample data — connect the Astradial API in Analytics → Settings.")
-								.font(.footnote)
-						}
-					}
-				}
-
 				Section {
 					countsStrip
 						.listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
@@ -383,7 +338,10 @@ struct CountPill: View {
 	var body: some View {
 		HStack(spacing: 5) {
 			Circle().fill(color).frame(width: 8, height: 8)
-			Text("\(label): \(count)").font(.footnote.weight(.medium))
+			Text("\(label): \(count)")
+				.font(.footnote.weight(.medium))
+				.lineLimit(1)
+				.fixedSize(horizontal: true, vertical: false)
 		}
 		.padding(.horizontal, 10)
 		.padding(.vertical, 5)
@@ -457,6 +415,8 @@ struct TicketDetailView: View {
 	@Environment(\.dismiss) private var dismiss
 	@State private var events: [TicketEvent] = []
 	@State private var eventsLoaded = false
+	@State private var pendingStatus: String?
+	@State private var remark = ""
 
 	var body: some View {
 		List {
@@ -544,20 +504,51 @@ struct TicketDetailView: View {
 		}
 		.navigationTitle("Ticket")
 		.navigationBarTitleDisplayMode(.inline)
-		.task {
-			if !viewModel.isSampleData {
-				events = (try? await AstradialAPI.shared.fetchTicketEvents(id: ticket.id)) ?? []
-			} else if ticket.id == "1" {
-				events = [
-					TicketEvent(id: "e1", linkedid: "l1", kind: "missed",
-						occurredAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-1800)),
-						meta: .init(duration: 22, billsec: 0, disposition: "NO ANSWER")),
-					TicketEvent(id: "e2", linkedid: "l2", kind: "missed",
-						occurredAt: ISO8601DateFormatter().string(from: .now.addingTimeInterval(-5400)),
-						meta: .init(duration: 18, billsec: 0, disposition: "NO ANSWER"))
-				]
+		.sheet(isPresented: Binding(get: { pendingStatus != nil }, set: { if !$0 { pendingStatus = nil; remark = "" } })) {
+			NavigationStack {
+				Form {
+					Section {
+						LabeledContent("New status", value: statusLabel(pendingStatus ?? ""))
+					}
+					Section("Remark (required)") {
+						TextField("Why is the status changing?", text: $remark, axis: .vertical)
+							.lineLimit(2...4)
+					}
+				}
+				.navigationTitle("Update Status")
+				.navigationBarTitleDisplayMode(.inline)
+				.toolbar {
+					ToolbarItem(placement: .topBarLeading) {
+						Button("Cancel") { pendingStatus = nil; remark = "" }
+					}
+					ToolbarItem(placement: .topBarTrailing) {
+						Button("Save") {
+							let status = pendingStatus ?? "open"
+							let text = remark.trimmingCharacters(in: .whitespacesAndNewlines)
+							Task {
+								await viewModel.set(ticket, fields: ["status": status, "remark": text, "notes": text])
+								pendingStatus = nil
+								remark = ""
+								dismiss()
+							}
+						}
+						.disabled(remark.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+					}
+				}
 			}
+			.presentationDetents([.medium])
+		}
+		.task {
+			events = (try? await AstradialAPI.shared.fetchTicketEvents(id: ticket.id)) ?? []
 			eventsLoaded = true
+		}
+	}
+
+	private func statusLabel(_ status: String) -> String {
+		switch status {
+		case "in_progress": return "In Progress"
+		case "closed": return "Closed"
+		default: return "Open"
 		}
 	}
 
@@ -572,8 +563,13 @@ struct TicketDetailView: View {
 
 	private var statusBinding: Binding<String> {
 		Binding(
-			get: { ticket.status ?? "open" },
-			set: { newValue in Task { await viewModel.set(ticket, fields: ["status": newValue]); dismiss() } }
+			get: { pendingStatus ?? ticket.status ?? "open" },
+			set: { newValue in
+				// Status changes require a remark — collected in a sheet.
+				if newValue != (ticket.status ?? "open") {
+					pendingStatus = newValue
+				}
+			}
 		)
 	}
 

@@ -424,7 +424,6 @@ struct PulseSnapshot: Sendable {
 @MainActor
 final class PulseViewModel: ObservableObject {
 	@Published var snapshot = PulseSnapshot()
-	@Published var isSampleData = true
 	@Published var truncated = false
 	@Published var errorMessage: String?
 	@Published var loaded = false
@@ -434,12 +433,11 @@ final class PulseViewModel: ObservableObject {
 
 	// Last result survives tab switches and re-creation, so the page
 	// renders instantly and refreshes in the background.
-	private static var cache: (snapshot: PulseSnapshot, isSample: Bool, updated: Date?)?
+	private static var cache: (snapshot: PulseSnapshot, updated: Date?)?
 
 	init() {
 		if let cached = Self.cache {
 			snapshot = cached.snapshot
-			isSampleData = cached.isSample
 			lastUpdated = cached.updated
 			loaded = true
 		}
@@ -451,18 +449,14 @@ final class PulseViewModel: ObservableObject {
 	}
 
 	func reload() async {
-		// Demo data ONLY when no API key is configured. A configured key
-		// that errors must never silently render fake numbers.
+		// No demo data, ever: signed-out users simply see nothing here
+		// (the tab itself is hidden until sign-in).
 		guard AstradialAPIConfig.isConfigured else {
-			let snap = await Task.detached(priority: .userInitiated) {
-				PulseSnapshot.compute(calls: PulseViewModel.sampleCalls(), tickets: TicketsViewModel.sampleTickets)
-			}.value
-			snapshot = snap
+			snapshot = PulseSnapshot()
 			truncated = false
-			isSampleData = true
 			errorMessage = nil
 			loaded = true
-			Self.cache = (snap, true, nil)
+			Self.cache = nil
 			return
 		}
 		do {
@@ -480,14 +474,12 @@ final class PulseViewModel: ObservableObject {
 			}.value
 			snapshot = snap
 			truncated = count >= 3000
-			isSampleData = false
 			errorMessage = nil
 			lastUpdated = .now
-			Self.cache = (snap, false, lastUpdated)
+			Self.cache = (snap, lastUpdated)
 		} catch {
 			// Keep last-known-good data on screen; just surface the failure.
 			errorMessage = error.localizedDescription
-			isSampleData = false
 		}
 		loaded = true
 	}
@@ -513,49 +505,6 @@ final class PulseViewModel: ObservableObject {
 		if aAnswered != bAnswered { return aAnswered ? a : b }
 		return (a.duration ?? 0) >= (b.duration ?? 0) ? a : b
 	}
-
-	// Deterministic sample dataset (30 days, inbound + outbound, repeat callers).
-	nonisolated static func sampleCalls() -> [CDRCall] {
-		let calendar = Calendar.current
-		var calls: [CDRCall] = []
-		var id = 1
-		for day in 0..<30 {
-			let base = calendar.date(byAdding: .day, value: -day, to: calendar.startOfDay(for: .now))!
-			let volume = 28 + (day * 7) % 14
-			for n in 0..<volume {
-				let hour = 8 + (n * 37) % 12
-				let date = calendar.date(bySettingHour: hour, minute: (n * 13) % 60, second: 0, of: base)!
-				guard date <= .now else { continue }
-				let missed = (n * 31 + day) % 6 == 0
-				let pool = (n + day * 3) % 80
-				calls.append(CDRCall(
-					id: id, calldate: ISO8601DateFormatter().string(from: date),
-					src: "98\(40000000 + pool * 1373)", dst: "8065978010",
-					disposition: missed ? "NO ANSWER" : "ANSWERED",
-					duration: missed ? 18 : 95 + (n * 17) % 300,
-					billsec: missed ? 0 : 80 + (n * 17) % 280,
-					direction: "inbound",
-					waitTime: 4 + (n * 7 + day * 3) % 18,
-					answeredBy: missed ? nil : "100\(1 + n % 4)",
-					recordingUrl: nil, queueName: nil, linkedid: nil
-				))
-				id += 1
-			}
-			for n in 0..<(4 + day % 4) {
-				let date = calendar.date(bySettingHour: 10 + (n * 3) % 8, minute: (n * 23) % 60, second: 0, of: base)!
-				guard date <= .now else { continue }
-				calls.append(CDRCall(
-					id: id, calldate: ISO8601DateFormatter().string(from: date),
-					src: "8065978010", dst: "98\(40000000 + ((n + day) % 80) * 1373)",
-					disposition: "ANSWERED", duration: 60, billsec: 50,
-					direction: "outbound", waitTime: 6, answeredBy: nil,
-					recordingUrl: nil, queueName: nil, linkedid: nil
-				))
-				id += 1
-			}
-		}
-		return calls
-	}
 }
 
 // MARK: - Analytics tab (Pulse)
@@ -568,7 +517,7 @@ struct AnalyticsTabView: View {
 	var body: some View {
 		NavigationStack {
 			Group {
-				if session.isSignedIn || session.demoMode || !session.firebaseAvailable {
+				if session.isSignedIn {
 					dashboard
 				} else {
 					MDLoginView()
@@ -611,12 +560,10 @@ struct AnalyticsTabView: View {
 
 	@ViewBuilder
 	private var banners: some View {
-		if viewModel.isSampleData {
-			sampleBanner
-		} else if let error = viewModel.errorMessage {
+		if let error = viewModel.errorMessage {
 			errorBanner(error)
 		}
-		if !viewModel.isSampleData, let updated = viewModel.lastUpdated {
+		if let updated = viewModel.lastUpdated {
 			freshnessRow(updated)
 		}
 	}
@@ -635,28 +582,36 @@ struct AnalyticsTabView: View {
 
 	@ViewBuilder
 	private var cards: some View {
-		PulseHeroCard(viewModel: viewModel)
-		RecoveryCard(viewModel: viewModel)
-		GrowthGraphCard(viewModel: viewModel)
-		TrendGraphCard(viewModel: viewModel)
-		HourlyGraphCard(viewModel: viewModel)
+		NavigationLink { CallsDetailView(viewModel: viewModel) } label: {
+			AnswerRateHeroTile(viewModel: viewModel)
+		}
+		.buttonStyle(.plain)
+
+		LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible())], spacing: 14) {
+			NavigationLink { MissedDetailView(viewModel: viewModel) } label: {
+				MissedTile(viewModel: viewModel).frame(height: 178)
+			}
+			NavigationLink { UnreachedDetailView() } label: {
+				RecoveredTile(viewModel: viewModel).frame(height: 178)
+			}
+			NavigationLink { UnreachedDetailView() } label: {
+				AtRiskTile(viewModel: viewModel).frame(height: 178)
+			}
+			NavigationLink { NewDetailView(viewModel: viewModel) } label: {
+				NewPatientsTile(viewModel: viewModel).frame(height: 178)
+			}
+		}
+		.buttonStyle(.plain)
+
+		NavigationLink { CallsDetailView(viewModel: viewModel) } label: {
+			TrendTile(viewModel: viewModel)
+		}
+		.buttonStyle(.plain)
+
 		if viewModel.truncated {
-			Text("Based on the most recent 3,000 calls. Older days may be incomplete.")
+			Text("Latest 3,000 calls.")
 				.font(.caption2).foregroundStyle(.secondary)
 		}
-	}
-
-	private var sampleBanner: some View {
-		HStack(spacing: 8) {
-			Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-			Text("Demo data — sign in to see your hospital.")
-				.font(.footnote)
-			Spacer()
-			Button("Sign In") { MDSession.shared.demoMode = false }
-				.font(.footnote.weight(.semibold))
-		}
-		.padding(10)
-		.background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
 	}
 
 	private func errorBanner(_ message: String) -> some View {
@@ -674,66 +629,39 @@ struct AnalyticsTabView: View {
 	}
 }
 
-// MARK: - Card chrome
+// MARK: - Fitness-style tiles (numbers + color speak; minimal text)
 
-struct PulseCard<Content: View>: View {
+struct FitnessTile<Content: View>: View {
 	let title: String
-	let icon: String
-	let tint: Color
-	var why: String?
-	var insight: String?
-	var period: String?
+	var period: String? = "Today"
 	@ViewBuilder var content: Content
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 10) {
+		VStack(alignment: .leading, spacing: 4) {
 			HStack {
-				Label(title, systemImage: icon)
-					.font(.subheadline.weight(.semibold))
-					.foregroundStyle(tint)
+				Text(title)
+					.font(.title3.weight(.semibold))
 				Spacer()
-				if let period {
-					Text(period)
-						.font(.caption)
-						.foregroundStyle(.secondary)
-				}
+				Image(systemName: "chevron.right.circle.fill")
+					.font(.title3)
+					.foregroundStyle(Color(.systemGray3))
+			}
+			if let period {
+				Text(period)
+					.font(.subheadline)
+					.foregroundStyle(.secondary)
 			}
 			content
-			if let insight, !insight.isEmpty {
-				HStack(alignment: .top, spacing: 6) {
-					Image(systemName: "sparkles")
-						.font(.caption)
-						.foregroundStyle(tint)
-						.padding(.top, 1)
-					Text(insight)
-						.font(.footnote)
-						.foregroundStyle(.primary)
-				}
-				.padding(10)
-				.frame(maxWidth: .infinity, alignment: .leading)
-				.background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-			}
-			if let why, !why.isEmpty {
-				HStack(alignment: .top, spacing: 5) {
-					Image(systemName: "lightbulb.max.fill")
-						.font(.caption2)
-						.foregroundStyle(.yellow)
-						.padding(.top, 1)
-					Text(why)
-						.font(.caption)
-						.foregroundStyle(.secondary)
-				}
-			}
+			Spacer(minLength: 0)
 		}
-		.padding(14)
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+		.padding(16)
+		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+		.background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 	}
 }
 
-// MARK: - 1. Hero
-
-struct PulseHeroCard: View {
+// Full-width hero: activity-ring treatment for answer rate.
+struct AnswerRateHeroTile: View {
 	@ObservedObject var viewModel: PulseViewModel
 	@State private var animatedRate: Double = 0
 
@@ -745,32 +673,20 @@ struct PulseHeroCard: View {
 	}
 
 	var body: some View {
-		PulseCard(
-			title: "Today's Pulse", icon: "heart.fill", tint: .pink,
-			why: "Below 95% answer rate means patients are reaching your competitors. Every red point here is lost revenue.",
-			period: Date.now.formatted(.dateTime.weekday(.wide).day().month())
-		) {
-			HStack(spacing: 18) {
+		FitnessTile(title: "Answer Rate", period: Date.now.formatted(.dateTime.weekday(.wide).day().month())) {
+			HStack(spacing: 24) {
 				ZStack {
-					Circle().stroke(Color(.systemGray5), lineWidth: 11)
+					Circle().stroke(ringColor.opacity(0.22), lineWidth: 13)
 					Circle()
 						.trim(from: 0, to: animatedRate)
-						.stroke(ringColor, style: StrokeStyle(lineWidth: 11, lineCap: .round))
+						.stroke(ringColor, style: StrokeStyle(lineWidth: 13, lineCap: .round))
 						.rotationEffect(.degrees(-90))
-					// Target tick at 95%
-					Capsule()
-						.fill(Color.secondary.opacity(0.7))
-						.frame(width: 2.5, height: 13)
-						.offset(y: -52)
-						.rotationEffect(.degrees(360 * PulseViewModel.answerRateTarget))
-					VStack(spacing: 0) {
-						Text("\(Int(viewModel.snapshot.answerRate * 100))%")
-							.font(.system(size: 24, weight: .bold, design: .rounded))
-						Text("answered")
-							.font(.caption2).foregroundStyle(.secondary)
-					}
+					Text("\(Int(viewModel.snapshot.answerRate * 100))%")
+						.font(.system(size: 26, weight: .bold, design: .rounded))
+						.foregroundStyle(ringColor)
 				}
-				.frame(width: 104, height: 104)
+				.frame(width: 116, height: 116)
+				.padding(.vertical, 6)
 				.onAppear {
 					withAnimation(.easeOut(duration: 0.8)) { animatedRate = viewModel.snapshot.answerRate }
 				}
@@ -778,58 +694,16 @@ struct PulseHeroCard: View {
 					withAnimation(.easeOut(duration: 0.8)) { animatedRate = newValue }
 				}
 
-				VStack(alignment: .leading, spacing: 8) {
-					metric(value: "\(viewModel.snapshot.todayInbound)", label: "calls · yest \(viewModel.snapshot.yesterdayInbound)", color: .blue)
-					metric(value: "\(viewModel.snapshot.todayMissed)", label: "missed · yest \(viewModel.snapshot.yesterdayMissed)", color: .red)
-					metric(value: "₹\(viewModel.atRiskRupees.formatted())", label: "backlog at risk (est.)", color: .orange)
-				}
-				Spacer()
-			}
-		}
-	}
-
-	private func metric(value: String, label: String, color: Color) -> some View {
-		HStack(spacing: 6) {
-			Text(value).font(.system(.title3, design: .rounded).weight(.bold)).foregroundStyle(color)
-			Text(label).font(.footnote).foregroundStyle(.secondary)
-		}
-	}
-}
-
-// MARK: - 2. Recovery discipline
-
-struct RecoveryCard: View {
-	@ObservedObject var viewModel: PulseViewModel
-
-	var body: some View {
-		PulseCard(
-			title: "Recovery Discipline", icon: "arrow.uturn.down.circle.fill", tint: .teal,
-			why: "How fast the front desk calls missed patients back. Target: 100% within 15 minutes, zero unreached.",
-			period: "Last 7 days"
-		) {
-			HStack(spacing: 16) {
 				VStack(alignment: .leading, spacing: 2) {
-					Text("\(Int(viewModel.snapshot.recoveryRate * 100))%")
-						.font(.system(size: 26, weight: .bold, design: .rounded))
-						.foregroundStyle(viewModel.snapshot.recoveryRate >= 0.9 ? .green : (viewModel.snapshot.recoveryRate >= 0.6 ? .orange : .red))
-					Text("missed callers\nrecovered (7d)")
-						.font(.caption).foregroundStyle(.secondary)
-				}
-				Divider().frame(height: 44)
-				VStack(alignment: .leading, spacing: 2) {
-					Text(viewModel.snapshot.medianRecoveryMinutes.map { "\($0) min" } ?? "—")
-						.font(.system(size: 26, weight: .bold, design: .rounded))
-						.foregroundStyle((viewModel.snapshot.medianRecoveryMinutes ?? 999) <= 15 ? .green : .orange)
-					Text("median time\nto call back")
-						.font(.caption).foregroundStyle(.secondary)
-				}
-				Divider().frame(height: 44)
-				VStack(alignment: .leading, spacing: 2) {
-					Text("\(viewModel.snapshot.unrecoveredCount)")
-						.font(.system(size: 26, weight: .bold, design: .rounded))
-						.foregroundStyle(viewModel.snapshot.unrecoveredCount == 0 ? .green : .red)
-					Text("still\nunreached")
-						.font(.caption).foregroundStyle(.secondary)
+					Text("Answered")
+						.font(.headline)
+					Text("\(viewModel.snapshot.todayAnswered)/\(viewModel.snapshot.todayInbound)")
+						.font(.system(size: 34, weight: .bold, design: .rounded))
+						.foregroundStyle(ringColor)
+						.contentTransition(.numericText())
+					Text("yesterday \(viewModel.snapshot.yesterdayInbound - viewModel.snapshot.yesterdayMissed)/\(viewModel.snapshot.yesterdayInbound)")
+						.font(.footnote)
+						.foregroundStyle(.secondary)
 				}
 				Spacer()
 			}
@@ -837,148 +711,281 @@ struct RecoveryCard: View {
 	}
 }
 
-// MARK: - 3. New patients & follow-ups
-
-struct GrowthGraphCard: View {
+struct MissedTile: View {
 	@ObservedObject var viewModel: PulseViewModel
 
 	var body: some View {
-		PulseCard(
-			title: "New Patients & Follow-Ups", icon: "person.badge.plus", tint: .green,
-			insight: viewModel.snapshot.growthInsight,
-			period: "Last 14 days"
-		) {
-			HStack(spacing: 16) {
-				HStack(spacing: 5) {
-					Circle().fill(.green).frame(width: 8, height: 8)
-					Text("New callers (first in 30d)").font(.caption).foregroundStyle(.secondary)
-				}
-				HStack(spacing: 5) {
-					Circle().fill(.orange).frame(width: 8, height: 8)
-					Text("Outbound follow-ups").font(.caption).foregroundStyle(.secondary)
+		FitnessTile(title: "Missed") {
+			Text("\(viewModel.snapshot.todayMissed)")
+				.font(.system(size: 34, weight: .bold, design: .rounded))
+				.foregroundStyle(.red)
+				.contentTransition(.numericText())
+			Chart(viewModel.snapshot.hourly) { stat in
+				BarMark(x: .value("Hour", stat.hour, unit: .hour), y: .value("Missed", stat.missed))
+					.foregroundStyle(.red)
+					.cornerRadius(1.5)
+			}
+			.chartXAxis {
+				AxisMarks(values: .stride(by: .hour, count: 6)) { _ in
+					AxisValueLabel(format: .dateTime.hour())
+						.font(.system(size: 8))
 				}
 			}
-			Chart {
-				ForEach(viewModel.snapshot.daily.suffix(14)) { stat in
-					BarMark(x: .value("Day", stat.day, unit: .day), y: .value("New", stat.newCallers))
-						.foregroundStyle(.green.gradient)
-						.cornerRadius(2)
-				}
-				ForEach(viewModel.snapshot.daily.suffix(14)) { stat in
-					LineMark(x: .value("Day", stat.day, unit: .day), y: .value("Outbound", stat.outbound))
-						.foregroundStyle(.orange)
-						.interpolationMethod(.catmullRom)
-					PointMark(x: .value("Day", stat.day, unit: .day), y: .value("Outbound", stat.outbound))
-						.foregroundStyle(.orange)
-						.symbolSize(14)
-				}
-			}
-			.frame(height: 110)
-			.chartLegend(.hidden)
+			.chartYAxis(.hidden)
+			.frame(height: 56)
 		}
 	}
 }
 
-// MARK: - 4. Call volume trend
-
-struct TrendGraphCard: View {
+struct RecoveredTile: View {
 	@ObservedObject var viewModel: PulseViewModel
-	@State private var range: Int = 7
+
+	private var color: Color {
+		viewModel.snapshot.recoveryRate >= 0.9 ? .green : (viewModel.snapshot.recoveryRate >= 0.6 ? .orange : .red)
+	}
 
 	var body: some View {
-		PulseCard(
-			title: "Call Volume Trend", icon: "chart.line.uptrend.xyaxis", tint: .indigo,
-			insight: viewModel.snapshot.trendInsight
-		) {
-			VStack(alignment: .leading, spacing: 8) {
-				HStack {
-					if let wow = viewModel.snapshot.weekOverWeek {
-						Label(
-							"\(wow >= 0 ? "+" : "")\(Int(wow * 100))% vs last week",
-							systemImage: wow >= 0 ? "arrow.up.right" : "arrow.down.right"
-						)
-						.font(.footnote.weight(.semibold))
-						.foregroundStyle(wow >= 0 ? .green : .red)
-					}
-					Spacer()
-					Picker("Range", selection: $range) {
-						Text("7D").tag(7)
-						Text("30D").tag(30)
-					}
-					.pickerStyle(.segmented)
-					.frame(width: 110)
-				}
-				Chart {
-					ForEach(viewModel.snapshot.daily.suffix(range)) { stat in
-						BarMark(x: .value("Day", stat.day, unit: .day), y: .value("Calls", stat.total))
-							.foregroundStyle(.indigo.gradient)
-							.cornerRadius(2)
-					}
-					ForEach(viewModel.snapshot.daily.suffix(range)) { stat in
-						BarMark(x: .value("Day", stat.day, unit: .day), y: .value("Missed", stat.missed))
-							.foregroundStyle(.red.opacity(0.85))
-							.cornerRadius(2)
-					}
-				}
-				.frame(height: 110)
-				.chartLegend(.hidden)
-			}
+		FitnessTile(title: "Recovered", period: "7 days") {
+			Text("\(Int(viewModel.snapshot.recoveryRate * 100))%")
+				.font(.system(size: 34, weight: .bold, design: .rounded))
+				.foregroundStyle(color)
+			Text(viewModel.snapshot.medianRecoveryMinutes.map { "median \($0)m" } ?? "—")
+				.font(.footnote)
+				.foregroundStyle(.secondary)
+				.padding(.top, 14)
 		}
 	}
 }
 
-// MARK: - 5. Today by hour (today vs yesterday)
-
-struct HourlyGraphCard: View {
+struct AtRiskTile: View {
 	@ObservedObject var viewModel: PulseViewModel
 
 	var body: some View {
-		PulseCard(
-			title: "Today by Hour", icon: "clock.badge.exclamationmark.fill", tint: .blue,
-			insight: viewModel.snapshot.hourlyInsight,
-			period: "Today vs yesterday"
-		) {
-			HStack(spacing: 16) {
-				HStack(spacing: 5) {
-					RoundedRectangle(cornerRadius: 2).fill(.blue.opacity(0.4)).frame(width: 10, height: 10)
-					Text("Today").font(.caption).foregroundStyle(.secondary)
+		FitnessTile(title: "At Risk", period: "now") {
+			Text("₹\(viewModel.atRiskRupees.formatted())")
+				.font(.system(size: 32, weight: .bold, design: .rounded))
+				.foregroundStyle(.orange)
+				.lineLimit(1)
+				.minimumScaleFactor(0.6)
+			Text("\(viewModel.snapshot.unrecoveredCount) unreached")
+				.font(.footnote)
+				.foregroundStyle(.secondary)
+				.padding(.top, 14)
+		}
+	}
+}
+
+struct NewPatientsTile: View {
+	@ObservedObject var viewModel: PulseViewModel
+
+	var body: some View {
+		FitnessTile(title: "New", period: "7 days") {
+			Text("\(viewModel.snapshot.newCallersLast7)")
+				.font(.system(size: 34, weight: .bold, design: .rounded))
+				.foregroundStyle(.green)
+			Chart(viewModel.snapshot.daily.suffix(14)) { stat in
+				BarMark(x: .value("Day", stat.day, unit: .day), y: .value("New", stat.newCallers))
+					.foregroundStyle(.green)
+					.cornerRadius(1.5)
+			}
+			.chartXAxis(.hidden)
+			.chartYAxis(.hidden)
+			.frame(height: 56)
+		}
+	}
+}
+
+struct TrendTile: View {
+	@ObservedObject var viewModel: PulseViewModel
+
+	private var wow: Double? { viewModel.snapshot.weekOverWeek }
+
+	var body: some View {
+		FitnessTile(title: "Calls", period: "14 days") {
+			HStack(alignment: .firstTextBaseline, spacing: 10) {
+				if let wow {
+					HStack(spacing: 4) {
+						Image(systemName: wow >= 0 ? "arrow.up.right" : "arrow.down.right")
+							.font(.title3.weight(.bold))
+						Text("\(wow >= 0 ? "+" : "")\(Int(wow * 100))%")
+							.font(.system(size: 34, weight: .bold, design: .rounded))
+					}
+					.foregroundStyle(wow >= 0 ? Color.green : Color.red)
+					Text("vs last week")
+						.font(.footnote)
+						.foregroundStyle(.secondary)
+				} else {
+					Text("\(viewModel.snapshot.daily.suffix(7).reduce(0) { $0 + $1.total })")
+						.font(.system(size: 34, weight: .bold, design: .rounded))
+						.foregroundStyle(.indigo)
 				}
-				HStack(spacing: 5) {
-					RoundedRectangle(cornerRadius: 2).fill(.red).frame(width: 10, height: 10)
-					Text("Missed").font(.caption).foregroundStyle(.secondary)
-				}
-				HStack(spacing: 5) {
-					Capsule().fill(Color(.systemGray2)).frame(width: 12, height: 3)
-					Text("Yesterday").font(.caption).foregroundStyle(.secondary)
-				}
+				Spacer()
 			}
 			Chart {
-				ForEach(viewModel.snapshot.hourly) { stat in
-					BarMark(x: .value("Hour", stat.hour, unit: .hour), y: .value("Calls", stat.total))
-						.foregroundStyle(.blue.opacity(0.4))
+				ForEach(viewModel.snapshot.daily.suffix(14)) { stat in
+					BarMark(x: .value("Day", stat.day, unit: .day), y: .value("Calls", stat.total))
+						.foregroundStyle(.indigo.opacity(0.45))
 						.cornerRadius(2)
 				}
-				ForEach(viewModel.snapshot.hourly) { stat in
+				ForEach(viewModel.snapshot.daily.suffix(14)) { stat in
+					BarMark(x: .value("Day", stat.day, unit: .day), y: .value("Missed", stat.missed))
+						.foregroundStyle(.red)
+						.cornerRadius(2)
+				}
+			}
+			.chartXAxis {
+				AxisMarks(values: .stride(by: .day, count: 3)) { _ in
+					AxisValueLabel(format: .dateTime.day())
+						.font(.system(size: 8))
+				}
+			}
+			.chartYAxis(.hidden)
+			.frame(height: 72)
+		}
+	}
+}
+
+// MARK: - Tile detail pages
+
+struct MissedDetailView: View {
+	@ObservedObject var viewModel: PulseViewModel
+
+	var body: some View {
+		List {
+			Section {
+				Chart(viewModel.snapshot.hourly) { stat in
 					BarMark(x: .value("Hour", stat.hour, unit: .hour), y: .value("Missed", stat.missed))
 						.foregroundStyle(.red)
 						.cornerRadius(2)
 				}
-				ForEach(viewModel.snapshot.yesterdayHourly) { stat in
-					LineMark(x: .value("Hour", stat.hour, unit: .hour), y: .value("Yesterday", stat.total))
-						.foregroundStyle(Color(.systemGray2))
-						.lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 3]))
-						.interpolationMethod(.monotone)
+				.chartXAxis {
+					AxisMarks(values: .stride(by: .hour, count: 4)) { _ in
+						AxisGridLine()
+						AxisValueLabel(format: .dateTime.hour())
+					}
+				}
+				.frame(height: 180)
+				.padding(.vertical, 8)
+			}
+			Section("By hour") {
+				ForEach(viewModel.snapshot.hourly.filter { $0.missed > 0 }) { stat in
+					HStack {
+						Text(stat.hour, format: .dateTime.hour())
+						Spacer()
+						Text("\(stat.missed) missed").foregroundStyle(.red)
+						Text("of \(stat.total)").foregroundStyle(.secondary)
+					}
+				}
+				if viewModel.snapshot.todayMissed == 0 {
+					Text("No missed calls today.").foregroundStyle(.secondary)
 				}
 			}
-			.chartXAxis {
-				AxisMarks(values: .stride(by: .hour, count: 4)) { _ in
-					AxisGridLine()
-					AxisValueLabel(format: .dateTime.hour())
-				}
-			}
-			.frame(height: 120)
-			.chartLegend(.hidden)
 		}
+		.navigationTitle("Missed · Today")
+		.navigationBarTitleDisplayMode(.inline)
+	}
+}
+
+struct CallsDetailView: View {
+	@ObservedObject var viewModel: PulseViewModel
+
+	var body: some View {
+		List {
+			Section {
+				Chart {
+					ForEach(viewModel.snapshot.daily) { stat in
+						BarMark(x: .value("Day", stat.day, unit: .day), y: .value("Calls", stat.total))
+							.foregroundStyle(.indigo.opacity(0.5))
+							.cornerRadius(2)
+					}
+					ForEach(viewModel.snapshot.daily) { stat in
+						BarMark(x: .value("Day", stat.day, unit: .day), y: .value("Missed", stat.missed))
+							.foregroundStyle(.red)
+							.cornerRadius(2)
+					}
+				}
+				.frame(height: 200)
+				.padding(.vertical, 8)
+			}
+			Section("Daily") {
+				ForEach(viewModel.snapshot.daily.reversed().filter { $0.total > 0 }) { stat in
+					HStack {
+						Text(stat.day, format: .dateTime.weekday(.abbreviated).day().month())
+						Spacer()
+						Text("\(stat.total)")
+						Text("· \(stat.missed) missed")
+							.foregroundStyle(stat.missed > 0 ? .red : .secondary)
+							.font(.footnote)
+					}
+				}
+			}
+		}
+		.navigationTitle("Calls · 30 Days")
+		.navigationBarTitleDisplayMode(.inline)
+	}
+}
+
+struct NewDetailView: View {
+	@ObservedObject var viewModel: PulseViewModel
+
+	var body: some View {
+		List {
+			Section {
+				Chart(viewModel.snapshot.daily) { stat in
+					BarMark(x: .value("Day", stat.day, unit: .day), y: .value("New", stat.newCallers))
+						.foregroundStyle(.green)
+						.cornerRadius(2)
+				}
+				.frame(height: 180)
+				.padding(.vertical, 8)
+			}
+			Section("First-time callers (30-day basis)") {
+				ForEach(viewModel.snapshot.daily.reversed().filter { $0.newCallers > 0 }) { stat in
+					HStack {
+						Text(stat.day, format: .dateTime.weekday(.abbreviated).day().month())
+						Spacer()
+						Text("\(stat.newCallers) new").foregroundStyle(.green)
+					}
+				}
+			}
+		}
+		.navigationTitle("New Patients")
+		.navigationBarTitleDisplayMode(.inline)
+	}
+}
+
+struct UnreachedDetailView: View {
+	@ObservedObject private var tickets = TicketsViewModel.shared
+
+	private var unreached: [Ticket] {
+		tickets.tickets.filter { ($0.status == "open" || $0.status == "in_progress") && $0.callbackFoundAt == nil }
+	}
+
+	var body: some View {
+		List {
+			Section("Not yet called back") {
+				ForEach(unreached) { ticket in
+					HStack(spacing: 12) {
+						InitialsAvatar(name: ticket.displayName, size: 38)
+						VStack(alignment: .leading, spacing: 1) {
+							Text(ticket.displayName).font(.subheadline.weight(.semibold))
+							Text(ticket.summaryLine).font(.caption).foregroundStyle(.secondary)
+						}
+						Spacer()
+						if let last = ticket.lastCallDate {
+							Text(relativeDate(time_t(last.timeIntervalSince1970)))
+								.font(.caption).foregroundStyle(.secondary)
+						}
+					}
+				}
+				if unreached.isEmpty {
+					Text("Everyone has been reached.").foregroundStyle(.secondary)
+				}
+			}
+		}
+		.navigationTitle("Unreached")
+		.navigationBarTitleDisplayMode(.inline)
+		.task { await tickets.reload() }
 	}
 }
 
@@ -992,13 +999,6 @@ final class MDSession: ObservableObject {
 	@Published var email: String?
 	@Published var role: String?
 	@Published var orgName: String?
-	@Published var demoMode: Bool = {
-#if DEBUG
-		return ProcessInfo.processInfo.environment["MD_DEMO"] == "1"
-#else
-		return false
-#endif
-	}()
 	let firebaseAvailable: Bool
 
 	var displayName: String { email ?? "MD" }
@@ -1046,11 +1046,11 @@ struct MDLoginView: View {
 	var body: some View {
 		VStack(spacing: 16) {
 			Spacer()
-			Image(systemName: "waveform.path.ecg")
-				.font(.system(size: 44))
-				.foregroundStyle(.indigo)
-			Text("MD Analytics")
-				.font(.title2.weight(.semibold))
+			Image("AstradialLogo")
+				.resizable()
+				.scaledToFit()
+				.frame(width: 88, height: 88)
+				.clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 			Text("Sign in to monitor company call activity.")
 				.font(.subheadline)
 				.foregroundStyle(.secondary)
@@ -1075,12 +1075,21 @@ struct MDLoginView: View {
 
 			Button {
 				busy = true
+				error = nil
 				Task {
 					defer { busy = false }
 					do {
 						try await MDSession.shared.signIn(email: email, password: password)
 					} catch {
-						self.error = error.localizedDescription
+						let code = AuthErrorCode(rawValue: (error as NSError).code)
+						switch code {
+						case .wrongPassword, .userNotFound, .invalidCredential, .invalidEmail, .userDisabled:
+							self.error = "Incorrect email or password."
+						case .networkError:
+							self.error = "No internet connection — try again."
+						default:
+							self.error = error.localizedDescription
+						}
 					}
 				}
 			} label: {
@@ -1090,14 +1099,6 @@ struct MDLoginView: View {
 			.buttonStyle(.borderedProminent)
 			.disabled(busy || email.isEmpty || password.isEmpty)
 			.padding(.horizontal)
-
-#if DEBUG
-			Button("Continue in demo mode") {
-				MDSession.shared.demoMode = true
-			}
-			.font(.footnote)
-			.padding(.top, 4)
-#endif
 
 			Spacer()
 			Spacer()
@@ -1111,6 +1112,7 @@ struct MDLoginView: View {
 struct AstradialSettingsView: View {
 	@Environment(\.dismiss) private var dismiss
 	@StateObject private var session = MDSession.shared
+	@ObservedObject private var coreContext = CoreContext.shared
 	@StateObject private var sipViewModel = AccountLoginViewModel()
 
 	@AppStorage("astradial_api_base") private var apiBase = "https://devpbx.astradial.com"
@@ -1121,50 +1123,107 @@ struct AstradialSettingsView: View {
 
 	var body: some View {
 		NavigationStack {
+			Group {
+				if session.isSignedIn {
+					settingsForm
+				} else {
+					// Signed out -> straight to the login screen.
+					MDLoginView()
+				}
+			}
+			.navigationTitle(session.isSignedIn ? "Settings" : "Sign In")
+			.navigationBarTitleDisplayMode(.inline)
+			.toolbar {
+				ToolbarItem(placement: .topBarTrailing) {
+					Button("Done") { dismiss() }
+				}
+			}
+		}
+	}
+
+	private var settingsForm: some View {
 			Form {
 				Section {
 					HStack(spacing: 12) {
 						InitialsAvatar(name: session.displayName, size: 52)
 						VStack(alignment: .leading) {
 							Text(session.email ?? "Not signed in").font(.body.weight(.medium))
-							Text(session.orgName.map { "\($0) · \(session.role ?? "member")" } ?? "Managing Director")
+							Text(session.orgName.map { "\($0) · \(session.role ?? "member")" } ?? "")
 								.font(.footnote).foregroundStyle(.secondary)
 						}
 					}
-					if session.isSignedIn {
-						Button("Sign Out", role: .destructive) { session.signOut() }
-					}
+					Button("Sign Out", role: .destructive) { session.signOut() }
 				}
 
 				Section {
-					LabeledContent("Status", value: sipRegistered ? "Registered" : "Not Registered")
+					HStack {
+						Text("Status")
+						Spacer()
+						if coreContext.loggingInProgress {
+							ProgressView().controlSize(.small)
+							Text("Registering…").foregroundStyle(.secondary)
+						} else {
+							Circle()
+								.fill(sipRegistered ? Color.green : Color.red)
+								.frame(width: 9, height: 9)
+							Text(sipRegistered ? "Registered" : "Not Registered")
+								.foregroundStyle(.secondary)
+						}
+					}
 					if !sipIdentity.isEmpty {
-						LabeledContent("Identity", value: sipIdentity)
+						LabeledContent("Line") {
+							Text(sipIdentity.replacingOccurrences(of: "sip:", with: ""))
+								.font(.footnote)
+								.lineLimit(1)
+								.truncationMode(.middle)
+						}
 					}
-					TextField("Username", text: $sipViewModel.username)
-						.autocapitalization(.none)
-					SecureField("Password", text: $sipViewModel.passwd)
-					TextField("Domain (e.g. stagesip.astradial.com:5080)", text: $sipViewModel.domain)
-						.autocapitalization(.none)
-					Picker("Transport", selection: $sipViewModel.transportType) {
-						Text("UDP").tag("UDP")
-						Text("TCP").tag("TCP")
-						Text("TLS").tag("TLS")
-					}
-					Button("Apply & Register") {
-						sipViewModel.login()
-						refreshSIPStatus()
-					}
-					.disabled(sipViewModel.username.isEmpty || sipViewModel.domain.isEmpty)
 					Button {
 						showScanner = true
 					} label: {
 						Label("Scan SIP QR Code", systemImage: "qrcode.viewfinder")
 					}
 				} header: {
-					Text("SIP Account (Linphone)")
+					Text("SIP Account")
+				}
+
+				Section {
+					LabeledContent("Username") {
+						TextField("e1001abc", text: $sipViewModel.username)
+							.multilineTextAlignment(.trailing)
+							.autocapitalization(.none)
+							.autocorrectionDisabled()
+					}
+					LabeledContent("Password") {
+						SecureField("required", text: $sipViewModel.passwd)
+							.multilineTextAlignment(.trailing)
+					}
+					LabeledContent("Server") {
+						TextField("devsip.astradial.com", text: $sipViewModel.domain)
+							.multilineTextAlignment(.trailing)
+							.autocapitalization(.none)
+							.autocorrectionDisabled()
+							.keyboardType(.URL)
+					}
+					Picker("Transport", selection: $sipViewModel.transportType) {
+						Text("UDP").tag("UDP")
+						Text("TCP").tag("TCP")
+						Text("TLS").tag("TLS")
+					}
+					Button {
+						sipViewModel.login()
+					} label: {
+						if coreContext.loggingInProgress {
+							HStack { ProgressView(); Text("Registering…") }
+						} else {
+							Text("Apply & Register")
+						}
+					}
+					.disabled(sipViewModel.username.isEmpty || sipViewModel.domain.isEmpty || coreContext.loggingInProgress)
+				} header: {
+					Text("Manual Setup")
 				} footer: {
-					Text("Registers this phone against the Astradial PBX. Use the credentials from the editor's Users page.")
+					Text("Credentials are on the dashboard's Users page (SIP icon).")
 				}
 
 				Section {
@@ -1190,14 +1249,13 @@ struct AstradialSettingsView: View {
 					LabeledContent("Engine", value: "Linphone SDK \(Core.getVersion)")
 				}
 			}
-			.navigationTitle("Settings")
-			.navigationBarTitleDisplayMode(.inline)
-			.toolbar {
-				ToolbarItem(placement: .topBarTrailing) {
-					Button("Done") { dismiss() }
-				}
-			}
 			.onAppear(perform: refreshSIPStatus)
+			.onChange(of: coreContext.loggingInProgress) { _, inProgress in
+				if !inProgress { refreshSIPStatus() }
+			}
+			.onChange(of: coreContext.accounts.count) { _, _ in
+				refreshSIPStatus()
+			}
 			.sheet(isPresented: $showScanner) {
 				QRScannerSheet { code in
 					if let credentials = SIPProvisioning.parse(code) {
@@ -1210,7 +1268,6 @@ struct AstradialSettingsView: View {
 					}
 				}
 			}
-		}
 	}
 
 	private func refreshSIPStatus() {

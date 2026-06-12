@@ -26,9 +26,9 @@ class AccountLoginViewModel: ObservableObject {
 	
 	@Published var username: String = ""
 	@Published var passwd: String = ""
-	@Published var domain: String = "sip.linphone.org"
+	@Published var domain: String = "devsip.astradial.com"
 	@Published var displayName: String = ""
-	@Published var transportType: String = "TLS"
+	@Published var transportType: String = "UDP"
 	@Published var authId: String = ""
 	@Published var sipProxyUrl: String = ""
 	@Published var outboundProxy: String = ""
@@ -46,6 +46,11 @@ class AccountLoginViewModel: ObservableObject {
 				}
 				return
 			}
+			// Astradial is a single-line phone: replace any existing
+			// accounts instead of stacking them (stacked accounts left the
+			// core registering to several servers and broke outbound routing).
+			core.clearAccounts()
+			core.clearAllAuthInfo()
 			do {
 				let usernameWithDomain = self.username.split(separator: "@")
 				
