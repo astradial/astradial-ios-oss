@@ -277,7 +277,7 @@ struct PulseSnapshot: Sendable {
 	var trendInsight = ""
 	var growthInsight = ""
 
-	static func compute(calls: [CDRCall], tickets: [Ticket]) -> PulseSnapshot {
+	static func compute(calls: [CDRCall], tickets: [Ticket], windowDays: Int = 7) -> PulseSnapshot {
 		var snap = PulseSnapshot()
 		let calendar = Calendar.current
 		let todayStart = calendar.startOfDay(for: .now)
@@ -294,7 +294,7 @@ struct PulseSnapshot: Sendable {
 		let actionable = tickets.filter { ($0.status == "open" || $0.status == "in_progress") && $0.callbackFoundAt == nil }
 		snap.unrecoveredCount = actionable.count
 
-		let weekAgo = calendar.date(byAdding: .day, value: -7, to: .now)!
+		let weekAgo = calendar.date(byAdding: .day, value: -windowDays, to: .now)!
 		let recentTickets = tickets.filter { ($0.lastCallDate ?? .distantPast) >= weekAgo }
 		let recovered = recentTickets.filter { $0.callbackDate != nil }
 		snap.recoveryRate = recentTickets.isEmpty ? 0 : Double(recovered.count) / Double(recentTickets.count)
@@ -363,8 +363,8 @@ struct PulseSnapshot: Sendable {
 		// Week-over-week compares COMPLETE days only — including today's
 		// partial day would read artificially negative every morning.
 		let completeDays = Array(snap.daily.dropLast())
-		let last7 = Array(completeDays.suffix(7))
-		let prior7 = Array(completeDays.dropLast(7).suffix(7))
+		let last7 = Array(completeDays.suffix(windowDays))
+		let prior7 = Array(completeDays.dropLast(windowDays).suffix(windowDays))
 		let last7Total = last7.reduce(0) { $0 + $1.total }
 		let prior7Total = prior7.reduce(0) { $0 + $1.total }
 		snap.weekOverWeek = prior7Total > 0 ? (Double(last7Total) / Double(prior7Total)) - 1.0 : nil
@@ -424,6 +424,11 @@ struct PulseSnapshot: Sendable {
 @MainActor
 final class PulseViewModel: ObservableObject {
 	@Published var snapshot = PulseSnapshot()
+	@Published var windowDays = 7 {
+		didSet { recomputeFromRaw() }
+	}
+	private var rawCalls: [CDRCall] = []
+	private var rawTickets: [Ticket] = []
 	@Published var truncated = false
 	@Published var errorMessage: String?
 	@Published var loaded = false
@@ -469,8 +474,12 @@ final class PulseViewModel: ObservableObject {
 			// Collapse multi-leg sessions (same linkedid) to one representative
 			// row, preferring ANSWERED+billsec>0 — same rule as the editor's
 			// call-log view, so the two screens agree.
+			let deduped = Self.dedupSessions(calls)
+			rawCalls = deduped
+			rawTickets = tickets
+			let days = windowDays
 			let snap = await Task.detached(priority: .userInitiated) {
-				PulseSnapshot.compute(calls: PulseViewModel.dedupSessions(calls), tickets: tickets)
+				PulseSnapshot.compute(calls: deduped, tickets: tickets, windowDays: days)
 			}.value
 			snapshot = snap
 			truncated = count >= 3000
@@ -482,6 +491,17 @@ final class PulseViewModel: ObservableObject {
 			errorMessage = error.localizedDescription
 		}
 		loaded = true
+	}
+
+	private func recomputeFromRaw() {
+		guard !rawCalls.isEmpty || !rawTickets.isEmpty else { return }
+		let calls = rawCalls, tickets = rawTickets, days = windowDays
+		Task {
+			let snap = await Task.detached(priority: .userInitiated) {
+				PulseSnapshot.compute(calls: calls, tickets: tickets, windowDays: days)
+			}.value
+			await MainActor.run { self.snapshot = snap }
+		}
 	}
 
 	nonisolated static func dedupSessions(_ calls: [CDRCall]) -> [CDRCall] {
@@ -523,8 +543,16 @@ struct AnalyticsTabView: View {
 					MDLoginView()
 				}
 			}
-			.navigationTitle("Pulse")
+			.navigationTitle("Analytics")
 			.toolbar {
+				ToolbarItem(placement: .topBarTrailing) {
+					Picker("Range", selection: $viewModel.windowDays) {
+						Text("7D").tag(7)
+						Text("30D").tag(30)
+					}
+					.pickerStyle(.segmented)
+					.frame(width: 104)
+				}
 				ToolbarItem(placement: .topBarTrailing) {
 					Button { showSettings = true } label: {
 						InitialsAvatar(name: session.displayName, size: 32)
@@ -602,16 +630,16 @@ struct AnalyticsTabView: View {
 
 		LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible())], spacing: 14) {
 			NavigationLink { MissedDetailView(viewModel: viewModel) } label: {
-				MissedTile(viewModel: viewModel).frame(height: 178)
+				MissedTile(viewModel: viewModel)
 			}
 			NavigationLink { UnreachedDetailView() } label: {
-				RecoveredTile(viewModel: viewModel).frame(height: 178)
+				RecoveredTile(viewModel: viewModel)
 			}
 			NavigationLink { UnreachedDetailView() } label: {
-				AtRiskTile(viewModel: viewModel).frame(height: 178)
+				AtRiskTile(viewModel: viewModel)
 			}
 			NavigationLink { NewDetailView(viewModel: viewModel) } label: {
-				NewPatientsTile(viewModel: viewModel).frame(height: 178)
+				NewPatientsTile(viewModel: viewModel)
 			}
 		}
 		.buttonStyle(.plain)
@@ -724,15 +752,45 @@ struct AnswerRateHeroTile: View {
 	}
 }
 
+// Every grid tile shares the exact same skeleton (value slot, chart
+// slot, footnote slot) so the four cards are pixel-identical.
+struct MetricTile<TileChart: View>: View {
+	let title: String
+	let period: String
+	let value: String
+	let color: Color
+	var footnote: String = " "
+	@ViewBuilder var chart: TileChart
+
+	var body: some View {
+		FitnessTile(title: title, period: period) {
+			Text(value)
+				.font(.system(size: 32, weight: .bold, design: .rounded))
+				.foregroundStyle(color)
+				.lineLimit(1)
+				.minimumScaleFactor(0.6)
+				.frame(height: 40, alignment: .leading)
+				.contentTransition(.numericText())
+			chart
+				.frame(height: 52)
+			Text(footnote)
+				.font(.footnote)
+				.foregroundStyle(.secondary)
+				.lineLimit(1)
+		}
+		.frame(height: 196)
+	}
+}
+
 struct MissedTile: View {
 	@ObservedObject var viewModel: PulseViewModel
 
 	var body: some View {
-		FitnessTile(title: "Missed") {
-			Text("\(viewModel.snapshot.todayMissed)")
-				.font(.system(size: 34, weight: .bold, design: .rounded))
-				.foregroundStyle(.red)
-				.contentTransition(.numericText())
+		MetricTile(
+			title: "Missed", period: "Today",
+			value: "\(viewModel.snapshot.todayMissed)", color: .red,
+			footnote: "yesterday \(viewModel.snapshot.yesterdayMissed)"
+		) {
 			Chart(viewModel.snapshot.hourly) { stat in
 				BarMark(x: .value("Hour", stat.hour, unit: .hour), y: .value("Missed", stat.missed))
 					.foregroundStyle(.red)
@@ -745,7 +803,6 @@ struct MissedTile: View {
 				}
 			}
 			.chartYAxis(.hidden)
-			.frame(height: 56)
 		}
 	}
 }
@@ -758,14 +815,12 @@ struct RecoveredTile: View {
 	}
 
 	var body: some View {
-		FitnessTile(title: "Recovered", period: "7 days") {
-			Text("\(Int(viewModel.snapshot.recoveryRate * 100))%")
-				.font(.system(size: 34, weight: .bold, design: .rounded))
-				.foregroundStyle(color)
-			Text(viewModel.snapshot.medianRecoveryMinutes.map { "median \($0)m" } ?? "—")
-				.font(.footnote)
-				.foregroundStyle(.secondary)
-				.padding(.top, 14)
+		MetricTile(
+			title: "Recovered", period: "\(viewModel.windowDays) days",
+			value: "\(Int(viewModel.snapshot.recoveryRate * 100))%", color: color,
+			footnote: viewModel.snapshot.medianRecoveryMinutes.map { "median \($0)m" } ?? " "
+		) {
+			Color.clear
 		}
 	}
 }
@@ -774,16 +829,12 @@ struct AtRiskTile: View {
 	@ObservedObject var viewModel: PulseViewModel
 
 	var body: some View {
-		FitnessTile(title: "At Risk", period: "now") {
-			Text("₹\(viewModel.atRiskRupees.formatted())")
-				.font(.system(size: 32, weight: .bold, design: .rounded))
-				.foregroundStyle(.orange)
-				.lineLimit(1)
-				.minimumScaleFactor(0.6)
-			Text("\(viewModel.snapshot.unrecoveredCount) unreached")
-				.font(.footnote)
-				.foregroundStyle(.secondary)
-				.padding(.top, 14)
+		MetricTile(
+			title: "At Risk", period: "now",
+			value: "₹\(viewModel.atRiskRupees.formatted())", color: .orange,
+			footnote: "\(viewModel.snapshot.unrecoveredCount) unreached"
+		) {
+			Color.clear
 		}
 	}
 }
@@ -792,18 +843,17 @@ struct NewPatientsTile: View {
 	@ObservedObject var viewModel: PulseViewModel
 
 	var body: some View {
-		FitnessTile(title: "New", period: "7 days") {
-			Text("\(viewModel.snapshot.newCallersLast7)")
-				.font(.system(size: 34, weight: .bold, design: .rounded))
-				.foregroundStyle(.green)
-			Chart(viewModel.snapshot.daily.suffix(14)) { stat in
+		MetricTile(
+			title: "New", period: "\(viewModel.windowDays) days",
+			value: "\(viewModel.snapshot.newCallersLast7)", color: .green
+		) {
+			Chart(viewModel.snapshot.daily.suffix(viewModel.windowDays)) { stat in
 				BarMark(x: .value("Day", stat.day, unit: .day), y: .value("New", stat.newCallers))
 					.foregroundStyle(.green)
 					.cornerRadius(1.5)
 			}
 			.chartXAxis(.hidden)
 			.chartYAxis(.hidden)
-			.frame(height: 56)
 		}
 	}
 }
@@ -814,7 +864,7 @@ struct TrendTile: View {
 	private var wow: Double? { viewModel.snapshot.weekOverWeek }
 
 	var body: some View {
-		FitnessTile(title: "Calls", period: "14 days") {
+		FitnessTile(title: "Calls", period: "\(viewModel.windowDays * 2) days") {
 			HStack(alignment: .firstTextBaseline, spacing: 10) {
 				if let wow {
 					HStack(spacing: 4) {
@@ -835,12 +885,12 @@ struct TrendTile: View {
 				Spacer()
 			}
 			Chart {
-				ForEach(viewModel.snapshot.daily.suffix(14)) { stat in
+				ForEach(viewModel.snapshot.daily.suffix(min(viewModel.windowDays * 2, 30))) { stat in
 					BarMark(x: .value("Day", stat.day, unit: .day), y: .value("Calls", stat.total))
 						.foregroundStyle(.indigo.opacity(0.45))
 						.cornerRadius(2)
 				}
-				ForEach(viewModel.snapshot.daily.suffix(14)) { stat in
+				ForEach(viewModel.snapshot.daily.suffix(min(viewModel.windowDays * 2, 30))) { stat in
 					BarMark(x: .value("Day", stat.day, unit: .day), y: .value("Missed", stat.missed))
 						.foregroundStyle(.red)
 						.cornerRadius(2)
