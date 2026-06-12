@@ -716,12 +716,13 @@ struct AnalyticsTabView: View {
 // (Not a ViewModifier: linphonesw exports its own `Content` type, which
 // collides with ViewModifier's associated Content in this file.)
 struct ShimmerOverlay: View {
+	@Environment(\.colorScheme) private var colorScheme
 	@State private var phase: CGFloat = -1.5
 
 	var body: some View {
 		GeometryReader { geo in
 			LinearGradient(
-				colors: [.clear, .white.opacity(0.55), .clear],
+				colors: [.clear, .white.opacity(colorScheme == .dark ? 0.22 : 0.55), .clear],
 				startPoint: .topLeading, endPoint: .bottomTrailing
 			)
 			.frame(width: geo.size.width * 0.7)
@@ -737,10 +738,13 @@ struct ShimmerOverlay: View {
 }
 
 extension View {
+	/// Masked to the content's own silhouette: only the skeleton shapes
+	/// glint — the sweep never paints the page background (which looked
+	/// like a smear in dark mode).
 	@ViewBuilder
 	func shimmering(_ active: Bool) -> some View {
 		if active {
-			overlay(ShimmerOverlay())
+			overlay(ShimmerOverlay().mask(self))
 		} else {
 			self
 		}
