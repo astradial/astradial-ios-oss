@@ -560,6 +560,19 @@ struct AnalyticsTabView: View {
 
 	@ViewBuilder
 	private var banners: some View {
+		// Which hospital you're looking at — prevents wrong-org confusion.
+		if let org = session.orgName {
+			HStack(spacing: 6) {
+				Image(systemName: "building.2.fill")
+					.font(.caption)
+				Text(org)
+					.font(.subheadline.weight(.semibold))
+				if let role = session.role {
+					Text(role).font(.caption).foregroundStyle(.secondary)
+				}
+				Spacer()
+			}
+		}
 		if let error = viewModel.errorMessage {
 			errorBanner(error)
 		}
