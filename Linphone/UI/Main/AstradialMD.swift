@@ -618,7 +618,7 @@ struct AnalyticsTabView: View {
 			.padding(.horizontal)
 			.padding(.bottom, 24)
 			.redacted(reason: viewModel.loaded ? [] : .placeholder)
-			.modifier(Shimmer(active: !viewModel.loaded))
+			.shimmering(!viewModel.loaded)
 		}
 		.background(Color(.systemGroupedBackground))
 		.refreshable { await viewModel.reload() }
@@ -713,30 +713,37 @@ struct AnalyticsTabView: View {
 
 // MARK: - Loading shimmer
 
-struct Shimmer: ViewModifier {
-	let active: Bool
+// (Not a ViewModifier: linphonesw exports its own `Content` type, which
+// collides with ViewModifier's associated Content in this file.)
+struct ShimmerOverlay: View {
 	@State private var phase: CGFloat = -1.5
 
-	func body(content: Content) -> some View {
-		content.overlay {
-			if active {
-				GeometryReader { geo in
-					LinearGradient(
-						colors: [.clear, .white.opacity(0.55), .clear],
-						startPoint: .topLeading, endPoint: .bottomTrailing
-					)
-					.frame(width: geo.size.width * 0.7)
-					.offset(x: phase * geo.size.width)
-					.onAppear {
-						withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
-							phase = 1.5
-						}
-					}
+	var body: some View {
+		GeometryReader { geo in
+			LinearGradient(
+				colors: [.clear, .white.opacity(0.55), .clear],
+				startPoint: .topLeading, endPoint: .bottomTrailing
+			)
+			.frame(width: geo.size.width * 0.7)
+			.offset(x: phase * geo.size.width)
+			.onAppear {
+				withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
+					phase = 1.5
 				}
-				.allowsHitTesting(false)
 			}
 		}
-		.animation(.default, value: active)
+		.allowsHitTesting(false)
+	}
+}
+
+extension View {
+	@ViewBuilder
+	func shimmering(_ active: Bool) -> some View {
+		if active {
+			overlay(ShimmerOverlay())
+		} else {
+			self
+		}
 	}
 }
 
