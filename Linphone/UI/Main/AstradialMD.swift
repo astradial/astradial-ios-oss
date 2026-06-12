@@ -17,6 +17,19 @@ import linphonesw
 
 // MARK: - API config & keychain
 
+/// Cache-free session for all Astradial API traffic. Live authenticated
+/// JSON must not hit the CFNetwork URL cache — caching it both leaks
+/// responses to disk and spams "cfurl_cache_response UNIQUE constraint"
+/// sqlite noise into the logs.
+enum AstradialHTTP {
+	static let session: URLSession = {
+		let configuration = URLSessionConfiguration.ephemeral
+		configuration.urlCache = nil
+		configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+		return URLSession(configuration: configuration)
+	}()
+}
+
 struct AstradialAPIConfig {
 	@AppStorage("astradial_api_base") static var storedBase: String = "https://devpbx.astradial.com"
 
@@ -61,7 +74,7 @@ actor PlatformAuth {
 		request.httpMethod = "POST"
 		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 		request.httpBody = try JSONSerialization.data(withJSONObject: ["firebase_token": idToken])
-		let (data, response) = try await URLSession.shared.data(for: request)
+		let (data, response) = try await AstradialHTTP.session.data(for: request)
 		guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
 			throw AstradialAPIError.http((response as? HTTPURLResponse)?.statusCode ?? 0)
 		}
@@ -251,7 +264,7 @@ actor AstradialAPI {
 			] + query
 			var request = URLRequest(url: components.url!)
 			request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
-			let (data, response) = try await URLSession.shared.data(for: request)
+			let (data, response) = try await AstradialHTTP.session.data(for: request)
 			if let http = response as? HTTPURLResponse, http.statusCode != 200 {
 				throw AstradialAPIError.http(http.statusCode)
 			}
@@ -994,7 +1007,7 @@ struct APIDiagnosticsView: View {
 			do {
 				var request = URLRequest(url: URL(string: urlString)!)
 				request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
-				let (data, response) = try await URLSession.shared.data(for: request)
+				let (data, response) = try await AstradialHTTP.session.data(for: request)
 				let status = (response as? HTTPURLResponse).map { String($0.statusCode) } ?? "?"
 				let body = String(decoding: data.prefix(700), as: UTF8.self)
 				results.append(ProbeResult(name: name, url: urlString, status: status, body: body))

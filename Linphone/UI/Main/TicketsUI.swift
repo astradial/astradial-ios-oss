@@ -138,7 +138,7 @@ extension AstradialAPI {
 	}
 
 	private func run(_ request: URLRequest) async throws -> Data {
-		let (data, response) = try await URLSession.shared.data(for: request)
+		let (data, response) = try await AstradialHTTP.session.data(for: request)
 		if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
 			throw AstradialAPIError.http(http.statusCode)
 		}
