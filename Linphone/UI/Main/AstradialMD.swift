@@ -924,6 +924,77 @@ struct TrendTile: View {
 	}
 }
 
+// MARK: - API diagnostics (ground truth, no guessing)
+
+struct APIDiagnosticsView: View {
+	struct ProbeResult: Identifiable {
+		let id = UUID()
+		let name: String
+		let url: String
+		let status: String
+		let body: String
+	}
+
+	@State private var results: [ProbeResult] = []
+	@State private var running = false
+	@ObservedObject private var session = MDSession.shared
+
+	var body: some View {
+		List {
+			Section("Session") {
+				LabeledContent("Org", value: session.orgName ?? "—")
+				LabeledContent("Role", value: session.role ?? "—")
+				LabeledContent("Server", value: AstradialAPIConfig.base)
+			}
+			ForEach(results) { result in
+				Section(result.name) {
+					Text(result.url).font(.caption2.monospaced()).foregroundStyle(.secondary)
+					LabeledContent("Status", value: result.status)
+					Text(result.body)
+						.font(.caption.monospaced())
+						.textSelection(.enabled)
+				}
+			}
+			if running {
+				ProgressView()
+			}
+		}
+		.navigationTitle("API Diagnostics")
+		.navigationBarTitleDisplayMode(.inline)
+		.task { await run() }
+		.refreshable { await run() }
+	}
+
+	private func run() async {
+		running = true
+		results = []
+		let dateFormatter = DateFormatter()
+		dateFormatter.dateFormat = "yyyy-MM-dd"
+		let from = dateFormatter.string(from: Calendar.current.date(byAdding: .day, value: -7, to: .now)!)
+		let to = dateFormatter.string(from: Calendar.current.date(byAdding: .day, value: 1, to: .now)!)
+		let probes: [(String, String)] = [
+			("calls · undated", "/api/v1/calls?limit=3"),
+			("calls · dated", "/api/v1/calls?limit=3&date_from=\(from)&date_to=\(to)"),
+			("calls · count only", "/api/v1/calls/count"),
+			("tickets", "/api/v1/tickets?limit=2")
+		]
+		for (name, path) in probes {
+			let urlString = AstradialAPIConfig.base + path
+			do {
+				var request = URLRequest(url: URL(string: urlString)!)
+				request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
+				let (data, response) = try await URLSession.shared.data(for: request)
+				let status = (response as? HTTPURLResponse).map { String($0.statusCode) } ?? "?"
+				let body = String(decoding: data.prefix(700), as: UTF8.self)
+				results.append(ProbeResult(name: name, url: urlString, status: status, body: body))
+			} catch {
+				results.append(ProbeResult(name: name, url: urlString, status: "error", body: error.localizedDescription))
+			}
+		}
+		running = false
+	}
+}
+
 // MARK: - Tile detail pages
 
 struct MissedDetailView: View {
@@ -1326,6 +1397,12 @@ struct AstradialSettingsView: View {
 				Section("About") {
 					LabeledContent("App", value: "Astradial Phone")
 					LabeledContent("Engine", value: "Linphone SDK \(Core.getVersion)")
+				}
+
+				Section("Developer") {
+					NavigationLink("API Diagnostics") {
+						APIDiagnosticsView()
+					}
 				}
 			}
 			.onAppear(perform: refreshSIPStatus)
