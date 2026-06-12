@@ -211,17 +211,33 @@ actor AstradialAPI {
 		guard AstradialAPIConfig.isConfigured else { throw AstradialAPIError.notConfigured }
 		let dateFormatter = DateFormatter()
 		dateFormatter.dateFormat = "yyyy-MM-dd"
+		// date_to is padded a day in case the server treats it as an
+		// exclusive midnight boundary.
+		let paddedTo = Calendar.current.date(byAdding: .day, value: 1, to: to) ?? to
 
+		let dated = try await fetchCallPages(query: [
+			URLQueryItem(name: "date_from", value: dateFormatter.string(from: from)),
+			URLQueryItem(name: "date_to", value: dateFormatter.string(from: paddedTo))
+		], maxRecords: maxRecords)
+		if !dated.isEmpty { return dated }
+
+		// Self-heal: some deployments mis-parse the date filters and
+		// return nothing. Refetch newest-first without dates and filter
+		// client-side instead.
+		let all = try await fetchCallPages(query: [], maxRecords: maxRecords)
+		let cutoff = Calendar.current.date(byAdding: .day, value: -1, to: from) ?? from
+		return all.filter { $0.date >= cutoff }
+	}
+
+	private func fetchCallPages(query: [URLQueryItem], maxRecords: Int) async throws -> [CDRCall] {
 		var calls: [CDRCall] = []
 		var offset = 0
 		while calls.count < maxRecords {
 			var components = URLComponents(string: "\(AstradialAPIConfig.base)/api/v1/calls")!
 			components.queryItems = [
 				URLQueryItem(name: "limit", value: "200"),
-				URLQueryItem(name: "offset", value: String(offset)),
-				URLQueryItem(name: "date_from", value: dateFormatter.string(from: from)),
-				URLQueryItem(name: "date_to", value: dateFormatter.string(from: to))
-			]
+				URLQueryItem(name: "offset", value: String(offset))
+			] + query
 			var request = URLRequest(url: components.url!)
 			request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
 			let (data, response) = try await URLSession.shared.data(for: request)
