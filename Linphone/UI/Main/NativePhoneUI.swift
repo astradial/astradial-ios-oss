@@ -242,22 +242,17 @@ struct KeypadTabView: View {
 		}
 	}
 
+	@ViewBuilder
 	private var chipLabel: some View {
-		HStack(spacing: 4) {
-			RoundedRectangle(cornerRadius: 8, style: .continuous)
-				.fill(Color.accentColor)
-				.frame(width: 32, height: 32)
-				.overlay(
-					Text(accountInitial.isEmpty ? "A" : accountInitial)
-						.font(.system(size: 18, weight: .semibold))
-						.foregroundStyle(.white)
-				)
-			VStack(spacing: 0) {
-				Image(systemName: "chevron.up")
-				Image(systemName: "chevron.down")
-			}
-			.font(.system(size: 9, weight: .bold))
-			.foregroundStyle(.secondary)
+		// Profile avatar when signed in, settings gear otherwise — both
+		// open Settings (account, SIP line, sign-in).
+		if MDSession.shared.isSignedIn {
+			InitialsAvatar(name: MDSession.shared.displayName, size: 34)
+		} else {
+			Image(systemName: "gearshape.circle.fill")
+				.font(.system(size: 34))
+				.symbolRenderingMode(.hierarchical)
+				.foregroundStyle(.secondary)
 		}
 	}
 
