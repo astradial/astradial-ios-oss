@@ -700,74 +700,116 @@ struct RecentsDetailView: View {
 	}
 }
 
-// MARK: - Contacts
+// MARK: - Contacts (org directory: Users & Extensions, no device contacts)
 
-struct DeviceContact: Identifiable {
+struct OrgUser: Decodable, Identifiable {
 	let id: String
-	let givenName: String
-	let familyName: String
-	let organization: String
-	let thumbnail: Data?
-	let numbers: [(label: String, value: String)]
+	let extensionNumber: String?
+	let fullName: String?
+	let role: String?
+	let status: String?
+	let routingType: String?
+	let ringTarget: String?
+	let phoneNumber: String?
 
-	var displayName: String {
-		let full = "\(givenName) \(familyName)".trimmingCharacters(in: .whitespaces)
-		return full.isEmpty ? organization : full
+	enum CodingKeys: String, CodingKey {
+		case id, role, status
+		case extensionNumber = "extension"
+		case fullName = "full_name"
+		case routingType = "routing_type"
+		case ringTarget = "ring_target"
+		case phoneNumber = "phone_number"
 	}
 
-	var sortKey: String {
-		let key = familyName.isEmpty ? (givenName.isEmpty ? organization : givenName) : familyName
-		return key.isEmpty ? "#" : key
+	var displayName: String {
+		if let name = fullName, !name.isEmpty { return name }
+		return extensionNumber.map { "Ext \($0)" } ?? "User"
 	}
 
 	var sectionLetter: String {
-		let letter = String(sortKey.prefix(1)).uppercased()
+		let letter = String(displayName.prefix(1)).uppercased()
 		return letter.first?.isLetter == true ? letter : "#"
+	}
+
+	var isActive: Bool { (status ?? "active") == "active" }
+}
+
+extension AstradialAPI {
+	func fetchUsers() async throws -> [OrgUser] {
+		guard AstradialAPIConfig.isConfigured else { throw AstradialAPIError.notConfigured }
+		var request = URLRequest(url: URL(string: "\(AstradialAPIConfig.base)/api/v1/users")!)
+		request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
+		let (data, response) = try await AstradialHTTP.session.data(for: request)
+		if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+			throw AstradialAPIError.http(http.statusCode)
+		}
+		guard let users = try? JSONDecoder().decode([OrgUser].self, from: data) else {
+			throw AstradialAPIError.decodeError(endpoint: "users", body: data)
+		}
+		return users
+	}
+
+	func setUserStatus(id: String, active: Bool) async throws {
+		var request = URLRequest(url: URL(string: "\(AstradialAPIConfig.base)/api/v1/users/\(id)")!)
+		request.httpMethod = "PUT"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
+		request.httpBody = try JSONSerialization.data(withJSONObject: ["status": active ? "active" : "inactive"])
+		let (_, response) = try await AstradialHTTP.session.data(for: request)
+		if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+			throw AstradialAPIError.http(http.statusCode)
+		}
 	}
 }
 
-final class DeviceContactsModel: ObservableObject {
-	@Published var contacts: [DeviceContact] = []
-	@Published var accessDenied = false
+@MainActor
+final class OrgDirectoryModel: ObservableObject {
+	@Published var users: [OrgUser] = []
+	@Published var errorMessage: String?
+	@Published var loaded = false
 
-	func load() {
-		let store = CNContactStore()
-		store.requestAccess(for: .contacts) { granted, _ in
-			guard granted else {
-				DispatchQueue.main.async { self.accessDenied = true }
-				return
-			}
-			DispatchQueue.global(qos: .userInitiated).async {
-				let keys: [CNKeyDescriptor] = [
-					CNContactGivenNameKey, CNContactFamilyNameKey, CNContactOrganizationNameKey,
-					CNContactPhoneNumbersKey, CNContactThumbnailImageDataKey
-				] as [CNKeyDescriptor]
-				let request = CNContactFetchRequest(keysToFetch: keys)
-				request.sortOrder = .userDefault
-				var result: [DeviceContact] = []
-				try? store.enumerateContacts(with: request) { contact, _ in
-					result.append(DeviceContact(
-						id: contact.identifier,
-						givenName: contact.givenName,
-						familyName: contact.familyName,
-						organization: contact.organizationName,
-						thumbnail: contact.thumbnailImageData,
-						numbers: contact.phoneNumbers.map {
-							(CNLabeledValue<NSString>.localizedString(forLabel: $0.label ?? CNLabelPhoneNumberMobile),
-							 $0.value.stringValue)
-						}
-					))
-				}
-				DispatchQueue.main.async { self.contacts = result }
+	func load() async {
+		guard AstradialAPIConfig.isConfigured else {
+			users = []
+			loaded = true
+			return
+		}
+		do {
+			users = try await AstradialAPI.shared.fetchUsers()
+				.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+			errorMessage = nil
+		} catch {
+			errorMessage = error.localizedDescription
+		}
+		loaded = true
+	}
+
+	func setActive(_ user: OrgUser, _ active: Bool) {
+		// Optimistic flip; reload on failure.
+		if let index = users.firstIndex(where: { $0.id == user.id }) {
+			var copy = users
+			copy[index] = OrgUser(
+				id: user.id, extensionNumber: user.extensionNumber, fullName: user.fullName,
+				role: user.role, status: active ? "active" : "inactive",
+				routingType: user.routingType, ringTarget: user.ringTarget, phoneNumber: user.phoneNumber
+			)
+			users = copy
+		}
+		Task {
+			do {
+				try await AstradialAPI.shared.setUserStatus(id: user.id, active: active)
+			} catch {
+				errorMessage = "Couldn't update \(user.displayName): \(error.localizedDescription)"
+				await load()
 			}
 		}
 	}
 }
 
 struct ContactsTabView: View {
-	@StateObject private var model = DeviceContactsModel()
+	@StateObject private var model = OrgDirectoryModel()
+	@ObservedObject private var session = MDSession.shared
 	@State private var searchText = ""
-	@State private var showNewContact = false
 
 	var body: some View {
 		NavigationStack {
@@ -776,12 +818,8 @@ struct ContactsTabView: View {
 					List {
 						ForEach(sections, id: \.letter) { section in
 							Section {
-								ForEach(section.contacts) { contact in
-									NavigationLink {
-										ContactDetailView(contact: contact)
-									} label: {
-										NativeContactRow(contact: contact)
-									}
+								ForEach(section.users) { user in
+									OrgUserRow(user: user, model: model)
 								}
 							} header: {
 								Text(section.letter).id(section.letter)
@@ -790,7 +828,7 @@ struct ContactsTabView: View {
 					}
 					.listStyle(.plain)
 
-					if searchText.isEmpty {
+					if searchText.isEmpty && sections.count > 1 {
 						SectionIndexRail(letters: sections.map(\.letter)) { letter in
 							proxy.scrollTo(letter, anchor: .top)
 						}
@@ -800,66 +838,148 @@ struct ContactsTabView: View {
 			.navigationTitle("Contacts")
 			.navigationBarTitleDisplayMode(.inline)
 			.searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
-			.toolbar {
-				ToolbarItem(placement: .topBarTrailing) {
-					Button { showNewContact = true } label: { Image(systemName: "plus") }
-				}
-			}
-			.sheet(isPresented: $showNewContact, onDismiss: { model.load() }) {
-				NewContactSheet()
-			}
+			.refreshable { await model.load() }
 			.overlay {
-				if model.accessDenied {
+				if !session.isSignedIn {
 					ContentUnavailableView(
-						"No Access to Contacts",
-						systemImage: "person.crop.circle.badge.exclamationmark",
-						description: Text("Allow contact access in Settings > Privacy.")
+						"Sign In Required",
+						systemImage: "person.2.fill",
+						description: Text("Your team's extensions appear here after you sign in (Keypad → account chip).")
 					)
+				} else if model.loaded && model.users.isEmpty {
+					ContentUnavailableView("No Team Members", systemImage: "person.2")
 				}
 			}
+			.alert(
+				model.errorMessage ?? "",
+				isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
+			) {
+				Button("OK", role: .cancel) {}
+			}
 		}
-		.onAppear { model.load() }
+		.task { await model.load() }
+		.onChange(of: session.isSignedIn) { _, _ in
+			Task { await model.load() }
+		}
 	}
 
-	private var filtered: [DeviceContact] {
-		guard !searchText.isEmpty else { return model.contacts }
-		return model.contacts.filter {
+	private var filtered: [OrgUser] {
+		guard !searchText.isEmpty else { return model.users }
+		return model.users.filter {
 			$0.displayName.localizedCaseInsensitiveContains(searchText)
-				|| $0.numbers.contains { $0.value.localizedCaseInsensitiveContains(searchText) }
+				|| ($0.extensionNumber ?? "").localizedCaseInsensitiveContains(searchText)
 		}
 	}
 
-	private var sections: [(letter: String, contacts: [DeviceContact])] {
+	private var sections: [(letter: String, users: [OrgUser])] {
 		let grouped = Swift.Dictionary(grouping: filtered, by: \.sectionLetter)
 		return grouped.keys.sorted { a, b in
 			if a == "#" { return false }
 			if b == "#" { return true }
 			return a < b
-		}.map { (letter: $0, contacts: grouped[$0] ?? []) }
+		}.map { (letter: $0, users: grouped[$0] ?? []) }
 	}
 }
 
-struct NativeContactRow: View {
-	let contact: DeviceContact
+struct OrgUserRow: View {
+	let user: OrgUser
+	@ObservedObject var model: OrgDirectoryModel
 
 	var body: some View {
-		HStack(spacing: 12) {
-			if let data = contact.thumbnail, let image = UIImage(data: data) {
-				Image(uiImage: image)
-					.resizable().scaledToFill()
-					.frame(width: 40, height: 40)
-					.clipShape(Circle())
-			} else {
-				InitialsAvatar(name: contact.displayName, size: 40)
+		NavigationLink {
+			OrgUserDetailView(user: user, model: model)
+		} label: {
+			HStack(spacing: 12) {
+				InitialsAvatar(name: user.displayName, size: 40)
+				VStack(alignment: .leading, spacing: 1) {
+					nameText
+						.lineLimit(1)
+					if let ext = user.extensionNumber {
+						Text("ext \(ext)")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+					}
+				}
+				Spacer()
+				VStack(spacing: 1) {
+					Toggle("", isOn: Binding(
+						get: { user.isActive },
+						set: { model.setActive(user, $0) }
+					))
+					.labelsHidden()
+					.tint(.green)
+					Text(user.isActive ? "Work" : "Out")
+						.font(.caption2)
+						.foregroundStyle(user.isActive ? .green : .secondary)
+				}
 			}
-			(Text(contact.givenName.isEmpty ? "" : contact.givenName + " ")
-				+ Text(contact.familyName).fontWeight(.semibold))
-				.lineLimit(1)
-			if contact.displayName == contact.organization && !contact.organization.isEmpty {
-				Text(contact.organization).fontWeight(.semibold).lineLimit(1)
+			.padding(.vertical, 2)
+		}
+	}
+
+	private var nameText: Text {
+		let parts = user.displayName.split(separator: " ")
+		if parts.count > 1, let last = parts.last {
+			let first = parts.dropLast().joined(separator: " ")
+			return Text(first + " ") + Text(String(last)).fontWeight(.semibold)
+		}
+		return Text(user.displayName).fontWeight(.semibold)
+	}
+}
+
+struct OrgUserDetailView: View {
+	let user: OrgUser
+	@ObservedObject var model: OrgDirectoryModel
+
+	private var current: OrgUser { model.users.first(where: { $0.id == user.id }) ?? user }
+
+	var body: some View {
+		List {
+			Section {
+				VStack(spacing: 10) {
+					InitialsAvatar(name: current.displayName, size: 90)
+					Text(current.displayName).font(.title2.weight(.semibold))
+					if let ext = current.extensionNumber {
+						Text("ext \(ext)").foregroundStyle(.secondary)
+					}
+				}
+				.frame(maxWidth: .infinity)
+				.listRowBackground(Color.clear)
+			}
+			Section {
+				if let ext = current.extensionNumber {
+					Button {
+						AstradialDialer.call(ext)
+					} label: {
+						Label("Call ext \(ext)", systemImage: "phone.fill")
+					}
+				}
+				Toggle(isOn: Binding(
+					get: { current.isActive },
+					set: { model.setActive(current, $0) }
+				)) {
+					Label(current.isActive ? "At Work" : "Out", systemImage: current.isActive ? "person.fill.checkmark" : "person.fill.xmark")
+				}
+				.tint(.green)
+			}
+			Section("Details") {
+				if let role = current.role {
+					LabeledContent("Role", value: role.capitalized)
+				}
+				if let routing = current.routingType ?? current.ringTarget {
+					LabeledContent("Routing", value: routing.capitalized)
+				}
+				if let phone = current.phoneNumber, !phone.isEmpty {
+					Button {
+						AstradialDialer.call(phone)
+					} label: {
+						LabeledContent("Mobile") { Text(phone).foregroundStyle(Color.accentColor) }
+					}
+					.buttonStyle(.plain)
+				}
 			}
 		}
-		.padding(.vertical, 2)
+		.navigationBarTitleDisplayMode(.inline)
 	}
 }
 
@@ -878,65 +998,6 @@ struct SectionIndexRail: View {
 			}
 		}
 		.padding(.trailing, 2)
-	}
-}
-
-struct ContactDetailView: View {
-	let contact: DeviceContact
-
-	var body: some View {
-		List {
-			Section {
-				VStack(spacing: 10) {
-					if let data = contact.thumbnail, let image = UIImage(data: data) {
-						Image(uiImage: image)
-							.resizable().scaledToFill()
-							.frame(width: 90, height: 90)
-							.clipShape(Circle())
-					} else {
-						InitialsAvatar(name: contact.displayName, size: 90)
-					}
-					Text(contact.displayName).font(.title2.weight(.semibold))
-				}
-				.frame(maxWidth: .infinity)
-				.listRowBackground(Color.clear)
-			}
-			Section {
-				ForEach(contact.numbers, id: \.value) { number in
-					Button {
-						AstradialDialer.call(number.value)
-					} label: {
-						VStack(alignment: .leading, spacing: 2) {
-							Text(number.label).font(.footnote).foregroundStyle(.secondary)
-							Text(number.value).foregroundStyle(Color.accentColor)
-						}
-					}
-				}
-			}
-		}
-		.navigationBarTitleDisplayMode(.inline)
-	}
-}
-
-struct NewContactSheet: UIViewControllerRepresentable {
-	@Environment(\.dismiss) private var dismiss
-
-	func makeUIViewController(context: Context) -> UINavigationController {
-		let controller = CNContactViewController(forNewContact: nil)
-		controller.delegate = context.coordinator
-		return UINavigationController(rootViewController: controller)
-	}
-
-	func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
-
-	func makeCoordinator() -> Coordinator { Coordinator(dismiss: { dismiss() }) }
-
-	final class Coordinator: NSObject, CNContactViewControllerDelegate {
-		let dismiss: () -> Void
-		init(dismiss: @escaping () -> Void) { self.dismiss = dismiss }
-		func contactViewController(_ viewController: CNContactViewController, didCompleteWith contact: CNContact?) {
-			dismiss()
-		}
 	}
 }
 
