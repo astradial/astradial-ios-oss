@@ -618,6 +618,7 @@ struct AnalyticsTabView: View {
 			.padding(.horizontal)
 			.padding(.bottom, 24)
 			.redacted(reason: viewModel.loaded ? [] : .placeholder)
+			.modifier(Shimmer(active: !viewModel.loaded))
 		}
 		.background(Color(.systemGroupedBackground))
 		.refreshable { await viewModel.reload() }
@@ -710,6 +711,49 @@ struct AnalyticsTabView: View {
 	}
 }
 
+// MARK: - Loading shimmer
+
+struct Shimmer: ViewModifier {
+	let active: Bool
+	@State private var phase: CGFloat = -1.5
+
+	func body(content: Content) -> some View {
+		content.overlay {
+			if active {
+				GeometryReader { geo in
+					LinearGradient(
+						colors: [.clear, .white.opacity(0.55), .clear],
+						startPoint: .topLeading, endPoint: .bottomTrailing
+					)
+					.frame(width: geo.size.width * 0.7)
+					.offset(x: phase * geo.size.width)
+					.onAppear {
+						withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
+							phase = 1.5
+						}
+					}
+				}
+				.allowsHitTesting(false)
+			}
+		}
+		.animation(.default, value: active)
+	}
+}
+
+/// "45m", "1h 30m", "2d 4h" — minutes humanized upward.
+func humanizeMinutes(_ minutes: Int) -> String {
+	if minutes < 1 { return "<1m" }
+	if minutes < 60 { return "\(minutes)m" }
+	let hours = minutes / 60
+	let restMinutes = minutes % 60
+	if hours < 24 {
+		return restMinutes > 0 ? "\(hours)h \(restMinutes)m" : "\(hours)h"
+	}
+	let days = hours / 24
+	let restHours = hours % 24
+	return restHours > 0 ? "\(days)d \(restHours)h" : "\(days)d"
+}
+
 // MARK: - Fitness-style tiles (numbers + color speak; minimal text)
 
 struct FitnessTile<Content: View>: View {
@@ -800,10 +844,12 @@ struct MetricTile<TileChart: View>: View {
 	let value: String
 	let color: Color
 	var footnote: String = " "
+	var cornerIcon: String?
+	var cornerTint: Color = .teal
 	@ViewBuilder var chart: TileChart
 
 	var body: some View {
-		FitnessTile(title: title, period: period) {
+		decorated {
 			Text(value)
 				.font(.system(size: 32, weight: .bold, design: .rounded))
 				.foregroundStyle(color)
@@ -819,6 +865,26 @@ struct MetricTile<TileChart: View>: View {
 				.lineLimit(1)
 		}
 		.frame(height: 196)
+	}
+
+	@ViewBuilder
+	private func decorated<Inner: View>(@ViewBuilder inner: () -> Inner) -> some View {
+		FitnessTile(title: title, period: period) {
+			inner()
+		}
+		.overlay(alignment: .bottomTrailing) {
+			if let cornerIcon {
+				Image(systemName: resolvedIcon(cornerIcon))
+					.font(.system(size: 30, weight: .medium))
+					.foregroundStyle(cornerTint.opacity(0.85), cornerTint.opacity(0.25))
+					.padding(14)
+			}
+		}
+	}
+
+	// Requested symbols may not exist on every iOS — fall back gracefully.
+	private func resolvedIcon(_ name: String) -> String {
+		UIImage(systemName: name) != nil ? name : "arrow.uturn.left.circle.fill"
 	}
 }
 
@@ -858,7 +924,9 @@ struct RecoveredTile: View {
 		MetricTile(
 			title: "Recovered", period: "\(viewModel.windowDays) days",
 			value: "\(Int(viewModel.snapshot.recoveryRate * 100))%", color: color,
-			footnote: viewModel.snapshot.medianRecoveryMinutes.map { "median \($0)m" } ?? " "
+			footnote: viewModel.snapshot.medianRecoveryMinutes.map { "median \(humanizeMinutes($0))" } ?? " ",
+			cornerIcon: "pointer.arrow.ipad.rays",
+			cornerTint: .teal
 		) {
 			Color.clear
 		}
