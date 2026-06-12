@@ -154,7 +154,9 @@ class CoreContext: ObservableObject {
 	func initialiseCore() throws {
 		Log.info("Initialising core")
 #if USE_CRASHLYTICS
-		FirebaseApp.configure()
+		if FirebaseApp.app() == nil {
+			FirebaseApp.configure()
+		}
 #endif
 		monitor.pathUpdateHandler = { path in
 			let isConnected = path.status == .satisfied

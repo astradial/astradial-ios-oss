@@ -127,6 +127,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
 	<key>TFInternalTestingOnly</key>

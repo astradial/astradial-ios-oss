@@ -24,20 +24,18 @@ struct SplashScreen: View {
 
 	var body: some View {
 		ZStack {
-			Color(.systemBackground)
+			Color(red: 0x19 / 255.0, green: 0, blue: 1)
 				.ignoresSafeArea()
 
-			VStack(spacing: 14) {
-				Image(systemName: "phone.badge.waveform.fill")
-					.font(.system(size: 64))
-					.foregroundStyle(.tint)
-				Text("Astradial")
-					.font(.title.weight(.bold))
-			}
+			Image("AstradialLogo")
+				.resizable()
+				.scaledToFit()
+				.frame(width: 180, height: 180)
 
 			ProgressView()
 				.controlSize(.small)
-				.offset(y: 110)
+				.tint(.white)
+				.offset(y: 150)
 				.opacity(showSpinner ? 1 : 0)
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity)

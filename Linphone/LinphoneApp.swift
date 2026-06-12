@@ -22,6 +22,7 @@ import linphonesw
 import UserNotifications
 import Intents
 import PushKit
+import FirebaseCore
 
 let accountTokenNotification = Notification.Name("AccountCreationTokenReceived")
 var displayedChatroomPeerAddr: String?
@@ -61,6 +62,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 	}
 					 
 	func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+		// Configure Firebase before anything (MDSession/Auth) can touch it —
+		// CoreContext's call is kept as a guarded fallback.
+		if FirebaseApp.app() == nil {
+			FirebaseApp.configure()
+		}
+
 		// Set up notifications
 		UNUserNotificationCenter.current().delegate = self
 
