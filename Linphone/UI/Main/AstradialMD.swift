@@ -142,7 +142,11 @@ struct CDRCall: Decodable, Identifiable, Sendable {
 	}
 
 	var date: Date {
-		if let date = ISO8601DateFormatter().date(from: calldate) { return date }
+		// The API sends fractional seconds ("2026-06-12T01:49:51.000Z") —
+		// plain ISO8601DateFormatter rejects those, which silently turned
+		// every call into .distantPast and zeroed all analytics.
+		if let date = Self.isoFractional.date(from: calldate) { return date }
+		if let date = Self.isoPlain.date(from: calldate) { return date }
 		// Strings carrying an explicit offset/Z are UTC-anchored; naive
 		// MariaDB-style datetimes are interpreted as server-local (IST).
 		let hasOffset = calldate.hasSuffix("Z") || calldate.contains("+")
@@ -152,11 +156,18 @@ struct CDRCall: Decodable, Identifiable, Sendable {
 		return .distantPast
 	}
 
+	static let isoFractional: ISO8601DateFormatter = {
+		let formatter = ISO8601DateFormatter()
+		formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+		return formatter
+	}()
+	static let isoPlain = ISO8601DateFormatter()
+
 	var isInbound: Bool { direction != "outbound" }
 	var isMissed: Bool { disposition != "ANSWERED" && isInbound }
 
 	static let fallbackFormatter: DateFormatter = makeFormatter("yyyy-MM-dd'T'HH:mm:ss'Z'", utc: true)
-	static let utcFormatters = [fallbackFormatter]
+	static let utcFormatters = [fallbackFormatter, makeFormatter("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", utc: true)]
 	static let naiveFormatters = [
 		makeFormatter("yyyy-MM-dd'T'HH:mm:ss", utc: false),
 		makeFormatter("yyyy-MM-dd HH:mm:ss", utc: false)
