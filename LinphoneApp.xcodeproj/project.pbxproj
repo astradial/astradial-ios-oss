@@ -1498,9 +1498,6 @@
 			projectRoot = "";
 			targets = (
 				D719ABB22ABC67BF00B41C10 /* LinphoneApp */,
-				660AAF7A2B839271004C0FA6 /* msgNotificationService */,
-				D7458F2E2E0BDCF4000C957A /* linphoneExtension */,
-				D792F1572F02BCC2002E3225 /* intentsExtension */,
 				C652710B2F88D1CA00FF248C /* LinphoneAppUITests */,
 				C6E408AE2F8E1A33003E0F8C /* LinphoneAppTests */,
 			);
