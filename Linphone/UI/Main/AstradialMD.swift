@@ -480,6 +480,12 @@ final class PulseViewModel: ObservableObject {
 	// renders instantly and refreshes in the background.
 	private static var cache: (snapshot: PulseSnapshot, updated: Date?)?
 
+	// The cache isn't org-keyed — drop it whenever the signed-in
+	// account (and therefore the org) changes.
+	static func invalidateCache() {
+		cache = nil
+	}
+
 	init() {
 		if let cached = Self.cache {
 			snapshot = cached.snapshot
@@ -1270,19 +1276,34 @@ final class MDSession: ObservableObject {
 	}
 
 	func signIn(email: String, password: String) async throws {
+		// Replaces any signed-in user (Firebase keeps one session) — a
+		// failure leaves the previous user signed in, so account
+		// switching degrades gracefully on a changed password.
+		let previous = Auth.auth().currentUser?.email?.lowercased()
 		try await Auth.auth().signIn(withEmail: email, password: password)
+		await PlatformAuth.shared.reset()  // old org's JWT must never outlive its user
+		role = nil
+		orgName = nil
+		PulseViewModel.invalidateCache()   // static cache isn't org-keyed
+		AccountStore.shared.saveLogin(email: email, password: password)
+		AccountStore.shared.restoreSIPLine(
+			cameFromAccountSwitch: previous != nil && previous != email.lowercased())
+		_ = try? await PlatformAuth.shared.bearerToken()  // refresh role/org banner
+		await TicketsViewModel.shared.reload()            // open-count badge for the new org
 	}
 
 	func signOut() {
 		try? Auth.auth().signOut()
 		role = nil
 		orgName = nil
+		PulseViewModel.invalidateCache()
 		Task { await PlatformAuth.shared.reset() }
 	}
 
 	func applyPlatformUser(_ user: PlatformUser) {
 		role = user.role
 		orgName = user.orgName
+		AccountStore.shared.updateMeta(orgName: user.orgName, role: user.role)
 	}
 
 	var isOwner: Bool {
@@ -1291,6 +1312,8 @@ final class MDSession: ObservableObject {
 }
 
 struct MDLoginView: View {
+	var onSignedIn: (() -> Void)? = nil
+	@ObservedObject private var store = AccountStore.shared
 	@State private var email = ""
 	@State private var password = ""
 	@State private var error: String?
@@ -1333,6 +1356,7 @@ struct MDLoginView: View {
 					defer { busy = false }
 					do {
 						try await MDSession.shared.signIn(email: email, password: password)
+						onSignedIn?()
 					} catch {
 						let code = AuthErrorCode(rawValue: (error as NSError).code)
 						switch code {
@@ -1352,6 +1376,47 @@ struct MDLoginView: View {
 			.buttonStyle(.borderedProminent)
 			.disabled(busy || email.isEmpty || password.isEmpty)
 			.padding(.horizontal)
+
+			// One-tap switch into any previously saved account.
+			if !store.others.isEmpty {
+				VStack(spacing: 8) {
+					Text("Saved Accounts")
+						.font(.footnote.weight(.medium))
+						.foregroundStyle(.secondary)
+						.frame(maxWidth: .infinity, alignment: .leading)
+					ForEach(store.others) { account in
+						Button {
+							Task {
+								await store.switchTo(account.id)
+								if store.errorMessage == nil { onSignedIn?() }
+							}
+						} label: {
+							HStack(spacing: 10) {
+								InitialsAvatar(name: account.email, size: 30)
+								VStack(alignment: .leading, spacing: 1) {
+									Text(account.email).font(.subheadline).foregroundStyle(.primary)
+									if let org = account.orgName, !org.isEmpty {
+										Text(org).font(.caption).foregroundStyle(.secondary)
+									}
+								}
+								Spacer()
+								if store.switchingTo == account.id {
+									ProgressView().controlSize(.small)
+								}
+							}
+							.padding(10)
+							.background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+						}
+						.buttonStyle(.plain)
+						.disabled(store.switchingTo != nil)
+					}
+					if let switchError = store.errorMessage {
+						Text(switchError).font(.footnote).foregroundStyle(.red)
+					}
+				}
+				.padding(.horizontal)
+				.padding(.top, 4)
+			}
 
 			Spacer()
 			Spacer()
@@ -1397,17 +1462,7 @@ struct AstradialSettingsView: View {
 
 	private var settingsForm: some View {
 			Form {
-				Section {
-					HStack(spacing: 12) {
-						InitialsAvatar(name: session.displayName, size: 52)
-						VStack(alignment: .leading) {
-							Text(session.email ?? "Not signed in").font(.body.weight(.medium))
-							Text(session.orgName.map { "\($0) · \(session.role ?? "member")" } ?? "")
-								.font(.footnote).foregroundStyle(.secondary)
-						}
-					}
-					Button("Sign Out", role: .destructive) { session.signOut() }
-				}
+				AccountSwitcherSection()
 
 				Section {
 					HStack {
@@ -1440,6 +1495,8 @@ struct AstradialSettingsView: View {
 				} header: {
 					Text("SIP Account")
 				}
+
+				SIPUserPickerSection(sipViewModel: sipViewModel)
 
 				Section {
 					LabeledContent("Username") {

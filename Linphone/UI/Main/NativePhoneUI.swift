@@ -179,8 +179,10 @@ struct InitialsAvatar: View {
 // MARK: - Keypad
 
 struct KeypadTabView: View {
+	@ObservedObject private var accountStore = AccountStore.shared
+	@ObservedObject private var coreContext = CoreContext.shared
 	@State private var number = ""
-	@State private var accountInitial = ""
+	@State private var lineName = ""
 	@State private var showSettings = false
 
 	private let keys: [[(digit: String, letters: String)]] = [
@@ -227,7 +229,8 @@ struct KeypadTabView: View {
 				.padding(.top, 16)
 				.padding(.bottom, 12)
 		}
-		.onAppear(perform: loadAccountInitial)
+		.onAppear(perform: loadLineName)
+		.onChange(of: coreContext.accounts.count) { _, _ in loadLineName() }
 	}
 
 	private var accountChip: some View {
@@ -244,9 +247,22 @@ struct KeypadTabView: View {
 
 	@ViewBuilder
 	private var chipLabel: some View {
-		// Profile avatar when signed in, settings gear otherwise — both
+		// SIP user name when a line is attached/registered, profile
+		// avatar when only signed in, settings gear otherwise — all
 		// open Settings (account, SIP line, sign-in).
-		if MDSession.shared.isSignedIn {
+		if let sipName {
+			HStack(spacing: 6) {
+				InitialsAvatar(name: sipName, size: 28)
+				Text(sipName)
+					.font(.subheadline.weight(.medium))
+					.foregroundStyle(.primary)
+					.lineLimit(1)
+			}
+			.padding(.vertical, 4)
+			.padding(.leading, 4)
+			.padding(.trailing, 12)
+			.background(Capsule().fill(Color(.systemGray6)))
+		} else if MDSession.shared.isSignedIn {
 			InitialsAvatar(name: MDSession.shared.displayName, size: 34)
 		} else {
 			Image(systemName: "gearshape.circle.fill")
@@ -254,6 +270,13 @@ struct KeypadTabView: View {
 				.symbolRenderingMode(.hierarchical)
 				.foregroundStyle(.secondary)
 		}
+	}
+
+	// Attached SIP user's name; falls back to the registered line's
+	// identity for setups that predate account attachments.
+	private var sipName: String? {
+		if let sip = accountStore.current?.sip { return sip.chipName }
+		return lineName.isEmpty ? nil : lineName
 	}
 
 	private var numberDisplay: some View {
@@ -318,12 +341,12 @@ struct KeypadTabView: View {
 		}
 	}
 
-	private func loadAccountInitial() {
+	private func loadLineName() {
 		CoreContext.shared.doOnCoreQueue { core in
 			let name = core.defaultAccount?.params?.identityAddress?.displayName
 				?? core.defaultAccount?.params?.identityAddress?.username ?? ""
 			DispatchQueue.main.async {
-				accountInitial = name.first.map { String($0).uppercased() } ?? ""
+				lineName = name
 			}
 		}
 	}
@@ -706,6 +729,7 @@ struct OrgUser: Decodable, Identifiable {
 	let routingType: String?
 	let ringTarget: String?
 	let phoneNumber: String?
+	let asteriskEndpoint: String?
 
 	enum CodingKeys: String, CodingKey {
 		case id, role, status
@@ -714,6 +738,7 @@ struct OrgUser: Decodable, Identifiable {
 		case routingType = "routing_type"
 		case ringTarget = "ring_target"
 		case phoneNumber = "phone_number"
+		case asteriskEndpoint = "asterisk_endpoint"
 	}
 
 	var displayName: String {
@@ -786,7 +811,8 @@ final class OrgDirectoryModel: ObservableObject {
 			copy[index] = OrgUser(
 				id: user.id, extensionNumber: user.extensionNumber, fullName: user.fullName,
 				role: user.role, status: active ? "active" : "inactive",
-				routingType: user.routingType, ringTarget: user.ringTarget, phoneNumber: user.phoneNumber
+				routingType: user.routingType, ringTarget: user.ringTarget,
+				phoneNumber: user.phoneNumber, asteriskEndpoint: user.asteriskEndpoint
 			)
 			users = copy
 		}

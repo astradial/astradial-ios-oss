@@ -51,6 +51,16 @@ class AccountLoginViewModel: ObservableObject {
 			// core registering to several servers and broke outbound routing).
 			core.clearAccounts()
 			core.clearAllAuthInfo()
+			// Snapshot for the per-account SIP attachment (multi-account
+			// swap restores this line) — the fields below get reset after
+			// a successful login, so capture them now.
+			let attachment = SIPCredential(
+				username: self.username,
+				password: self.passwd,
+				domain: self.domain,
+				transport: self.transportType,
+				displayName: self.displayName
+			)
 			do {
 				let usernameWithDomain = self.username.split(separator: "@")
 				
@@ -104,6 +114,9 @@ class AccountLoginViewModel: ObservableObject {
 				
 				// A SIP account is identified by an identity address that we can construct from the username and domain
 				let identity = try Factory.Instance.createAddress(addr: String("sip:" + self.username + "@" + self.domain))
+				if !self.displayName.isEmpty {
+					try? identity.setDisplayname(newValue: self.displayName)
+				}
 				try accountParams.setIdentityaddress(newValue: identity)
 				
 				// We also need to configure where the proxy server is located
@@ -174,6 +187,9 @@ class AccountLoginViewModel: ObservableObject {
 				core.defaultAccount = account
 				
 				DispatchQueue.main.async {
+					// Attach this line to the signed-in platform account so
+					// switching accounts restores it (no-op when signed out).
+					AccountStore.shared.attachSIP(attachment)
 					self.domain = "sip.linphone.org"
 					self.transportType = "TLS"
 					self.authId = ""

@@ -122,11 +122,14 @@ struct OnboardingSIPView: View {
 	var body: some View {
 		Form {
 			Section {
-				Text("Connect this phone to the Astradial PBX. Use the SIP credentials from the dashboard (Users → SIP icon).")
+				Text("Connect this phone to the Astradial PBX — pick your SIP user, scan the QR code, or enter credentials manually.")
 					.font(.footnote)
 					.foregroundStyle(.secondary)
 					.listRowBackground(Color.clear)
 			}
+			// Signed-in users just pick their name; credentials come from
+			// the platform (same data as the dashboard's QR code).
+			SIPUserPickerSection(sipViewModel: sipViewModel)
 			Section {
 				Button {
 					showScanner = true
