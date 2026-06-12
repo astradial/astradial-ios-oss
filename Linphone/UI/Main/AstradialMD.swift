@@ -1370,6 +1370,7 @@ struct AstradialSettingsView: View {
 
 	@AppStorage("astradial_api_base") private var apiBase = "https://devpbx.astradial.com"
 	@AppStorage("md_rupee_per_patient") private var rupeePerPatient = 150
+	@AppStorage("astradial_appearance") private var appearance = "system"
 	@State private var sipRegistered = false
 	@State private var sipIdentity = ""
 	@State private var showScanner = false
@@ -1495,6 +1496,17 @@ struct AstradialSettingsView: View {
 					Text("MD Analytics")
 				} footer: {
 					Text("Average revenue per patient visit — used for the 'backlog at risk' number on the Pulse card.")
+				}
+
+				Section {
+					Picker("Appearance", selection: $appearance) {
+						Text("System").tag("system")
+						Text("Light").tag("light")
+						Text("Dark").tag("dark")
+					}
+					.pickerStyle(.segmented)
+				} header: {
+					Text("Appearance")
 				}
 
 				Section("About") {

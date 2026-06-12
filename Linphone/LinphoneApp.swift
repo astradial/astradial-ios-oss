@@ -226,6 +226,7 @@ struct LinphoneApp: App {
 
 struct AppView: View {
 	@Environment(\.scenePhase) var scenePhase
+	@AppStorage("astradial_appearance") private var appearance = "system"
 	let delegate: AppDelegate
 
 	@StateObject private var coreContext = CoreContext.shared
@@ -245,6 +246,7 @@ struct AppView: View {
 		.environmentObject(navigationManager)
 		.environmentObject(telecomManager)
 		.environmentObject(sharedMainViewModel)
+		.preferredColorScheme(appearance == "light" ? .light : (appearance == "dark" ? .dark : nil))
 		.onChange(of: scenePhase) { newPhase in
 			if !telecomManager.callInProgress {
 				switch newPhase {
