@@ -1360,9 +1360,12 @@ struct CallView: View {
 		GeometryReader { geometry in
 			VStack {
 				if geometry.size.width < geometry.size.height {
+					// All operands kept as CGFloat: mixing CGFloat (geometry.size)
+					// with Double made the `/` operators ambiguous under the CI
+					// toolchain's stricter Swift version (built fine locally).
 					let height = geometry.size.height
 					let width = geometry.size.width
-					let participantCount = Double(callViewModel.participantList.count + 1)
+					let participantCount = CGFloat(callViewModel.participantList.count + 1)
 					let rows = ceil(participantCount / 2.0)
 
 					let optionA = (height - (participantCount - 1) * 10) / participantCount
@@ -1606,9 +1609,12 @@ struct CallView: View {
 						}
 					}
 				} else {
+					// CGFloat throughout (see portrait branch above): avoids the
+					// ambiguous `/` the CI toolchain rejects when CGFloat and
+					// Double are mixed.
 					let height = geometry.size.height
 					let width = geometry.size.width
-					let participantCount = Double(callViewModel.participantList.count + 1)
+					let participantCount = CGFloat(callViewModel.participantList.count + 1)
 					let rows = ceil(participantCount / 2.0)
 
 					let optionA = min(height, (width - (participantCount - 1) * 10) / participantCount)
