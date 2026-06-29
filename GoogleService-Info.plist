@@ -1,23 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
+<!-- PLACEHOLDER ONLY. The real Astradial Firebase plist (project misssellerai) is
+     kept locally and hidden from git via skip-worktree; it is never committed.
+     Drop your real GoogleService-Info.plist here to build/run. CI builds fine with
+     these dummy values (FirebaseApp.configure runs at runtime, not at build). -->
 <dict>
 	<key>CLIENT_ID</key>
-	<string>221368768663-0ufgu96cel0auk4v0me863lgm252b9n2.apps.googleusercontent.com</string>
+	<string>DUMMY_CLIENT_ID.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.221368768663-0ufgu96cel0auk4v0me863lgm252b9n2</string>
+	<string>com.googleusercontent.apps.DUMMY_CLIENT_ID</string>
 	<key>API_KEY</key>
-	<string>AIzaSyDJTtlRCM7IqdVUU2dSIYq2YIsTz6bqnkI</string>
+	<string>DUMMY_API_KEY_SET_REAL_PLIST_LOCALLY</string>
 	<key>GCM_SENDER_ID</key>
-	<string>221368768663</string>
+	<string>000000000000</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>org.linphone.phone</string>
+	<string>com.astradial.softphone</string>
 	<key>PROJECT_ID</key>
-	<string>linphone-iphone</string>
+	<string>astradial-placeholder</string>
 	<key>STORAGE_BUCKET</key>
-	<string>linphone-iphone.firebasestorage.app</string>
+	<string>astradial-placeholder.appspot.com</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -29,8 +33,8 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:221368768663:ios:a2c822bc087b5a219431d2</string>
+	<string>1:000000000000:ios:0000000000000000000000</string>
 	<key>DATABASE_URL</key>
-	<string>https://linphone-iphone.firebaseio.com</string>
+	<string>https://astradial-placeholder.firebaseio.com</string>
 </dict>
 </plist>
