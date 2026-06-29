@@ -103,6 +103,10 @@ final class AccountStore: ObservableObject {
 		guard let index = accounts.firstIndex(where: { $0.id == currentId }) else { return }
 		accounts[index].sip = sip
 		persist()
+		// Token usually arrives before the SIP user is attached, so register it now
+		// that there's an endpoint to key it on. (Registry is on the main queue, so
+		// this no longer risks the launch race.)
+		PushKitManager.shared.registerTokenWithPlatform()
 	}
 
 	func remove(id: String) {

@@ -113,13 +113,21 @@ class EarlyPushkitDelegate: NSObject, PKPushRegistryDelegate, CXProviderDelegate
 /// push ever arrives, so this cannot affect the running app.
 final class PushKitManager: NSObject, PKPushRegistryDelegate {
 	static let shared = PushKitManager()
+	// IMPORTANT: the registry runs on the MAIN queue, not coreQueue. So token
+	// delivery / incoming-push callbacks never execute on coreQueue and can't
+	// reenter CoreContext startup and deadlock the launch (the earlier hang). Core
+	// work is still dispatched via doOnCoreQueue, which queues safely until ready.
+	private let registry = PKPushRegistry(queue: .main)
+	private var started = false
 	private var cachedVoipToken: String?
 
-	/// Wire this manager as the registry delegate and request a VoIP token.
-	func start(registry: PKPushRegistry) {
+	/// Wire the registry + request a VoIP token. Idempotent; safe to call at launch.
+	func start() {
+		guard !started else { return }
+		started = true
 		registry.delegate = self
 		registry.desiredPushTypes = [.voIP]
-		Log.info("[PushKitManager] VoIP push registry started")
+		Log.info("[PushKitManager] VoIP push registry started (main queue)")
 	}
 
 	func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
