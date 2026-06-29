@@ -45,6 +45,12 @@ struct NativeCallView: View {
 						.foregroundStyle(.white.opacity(0.7))
 						.monospacedDigit()
 						.contentTransition(.numericText())
+						.onReceive(callViewModel.timer) { _ in
+							// Tick the live duration every second — the view model
+							// only refreshes timeElapsed on call-state changes, so
+							// without this the timer froze at 0:01.
+							callViewModel.timeElapsed = callViewModel.currentCall?.duration ?? 0
+						}
 				}
 				.padding(.top, 56)
 

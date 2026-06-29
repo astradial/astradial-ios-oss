@@ -1298,6 +1298,14 @@ final class MDSession: ObservableObject {
 		orgName = nil
 		PulseViewModel.invalidateCache()
 		Task { await PlatformAuth.shared.reset() }
+		// Disconnect the SIP line too — it was attached to the account being
+		// signed out, so leaving it registered kept the keypad chip showing it
+		// (e.g. "thangaveluhospital") after logout. The saved attachment stays
+		// in AccountStore, so signing back in restores the line.
+		CoreContext.shared.doOnCoreQueue { core in
+			core.clearAccounts()
+			core.clearAllAuthInfo()
+		}
 	}
 
 	func applyPlatformUser(_ user: PlatformUser) {
