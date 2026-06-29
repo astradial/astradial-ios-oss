@@ -851,10 +851,14 @@ class CallViewModel: ObservableObject {
 	
 	func terminateCall() {
 		coreContext.doOnCoreQueue { core in
-			if self.currentCall != nil {
-				self.telecomManager.terminateCall(call: self.currentCall!)
+			// Resolve the live call robustly: a stale/nil tracked currentCall would
+			// otherwise leave the SIP dialog up so the far end never gets the BYE.
+			let callToEnd = self.currentCall ?? core.currentCall ?? core.calls.first
+			Log.info("[Hangup] terminateCall tracked=\(self.currentCall != nil) resolved=\(callToEnd != nil) state=\(callToEnd?.state.rawValue ?? -1) callsNb=\(core.callsNb)")
+			if let call = callToEnd {
+				self.telecomManager.terminateCall(call: call)
 			}
-			
+
 			if core.callsNb == 0 {
 				DispatchQueue.main.async {
 					self.timer.upstream.connect().cancel()
