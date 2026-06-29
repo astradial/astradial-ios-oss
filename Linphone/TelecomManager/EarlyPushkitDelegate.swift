@@ -113,6 +113,7 @@ class EarlyPushkitDelegate: NSObject, PKPushRegistryDelegate, CXProviderDelegate
 /// push ever arrives, so this cannot affect the running app.
 final class PushKitManager: NSObject, PKPushRegistryDelegate {
 	static let shared = PushKitManager()
+	private var cachedVoipToken: String?
 
 	/// Wire this manager as the registry delegate and request a VoIP token.
 	func start(registry: PKPushRegistry) {
@@ -124,13 +125,22 @@ final class PushKitManager: NSObject, PKPushRegistryDelegate {
 	func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
 		let token = pushCredentials.token.map { String(format: "%02.2hhx", $0) }.joined()
 		Log.info("[PushKitManager] Received VoIP push token")
-		// doOnCoreQueue creates/queues against the core, so this works whether or
-		// not the core is up yet — no separate token cache/flush needed.
+		cachedVoipToken = token
+		// Forward to liblinphone (doOnCoreQueue queues whether or not the core is up).
 		CoreContext.shared.doOnCoreQueue { core in
 			core.didRegisterForRemotePushWithStringifiedToken(deviceTokenStr: token + ":voip")
 		}
-		// ponytail: sending the token to the Astradial gateway lands with Part C
-		// (the server endpoint + payload contract are designed there together).
+		// Register with the Astradial gateway too (Asterisk isn't Flexisip). Skips
+		// gracefully if no SIP user is attached yet — re-sent on SIP attach.
+		Task { await AstradialAPI.shared.registerVoipToken(token) }
+	}
+
+	/// Re-send the cached VoIP token to the platform — called after a SIP line
+	/// attaches, since the token usually arrives before the user picks their SIP
+	/// user (so the per-user registration would otherwise have no endpoint to key on).
+	func registerTokenWithPlatform() {
+		guard let token = cachedVoipToken else { return }
+		Task { await AstradialAPI.shared.registerVoipToken(token) }
 	}
 
 	func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {

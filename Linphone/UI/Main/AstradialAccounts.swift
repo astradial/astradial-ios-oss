@@ -103,6 +103,9 @@ final class AccountStore: ObservableObject {
 		guard let index = accounts.firstIndex(where: { $0.id == currentId }) else { return }
 		accounts[index].sip = sip
 		persist()
+		// Push the VoIP token now that there's an endpoint to key it on (the token
+		// usually arrived before the SIP user was attached).
+		PushKitManager.shared.registerTokenWithPlatform()
 	}
 
 	func remove(id: String) {

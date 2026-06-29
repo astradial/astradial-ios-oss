@@ -231,6 +231,35 @@ enum AstradialAPIError: LocalizedError {
 actor AstradialAPI {
 	static let shared = AstradialAPI()
 
+	/// Registers this device's VoIP push token with the platform so the server
+	/// push gateway can wake the app for inbound calls. Keyed by the attached SIP
+	/// user's PJSIP endpoint (works for dropdown/QR/manual setups). Non-fatal:
+	/// skips silently when not signed in or no SIP line is attached yet.
+	func registerVoipToken(_ token: String) async {
+		guard AstradialAPIConfig.isConfigured else { return }
+		let endpoint = await MainActor.run { AccountStore.shared.current?.sip?.username }
+		guard let endpoint, !endpoint.isEmpty else { return }
+#if DEBUG
+		let environment = "dev"
+#else
+		let environment = "prod"
+#endif
+		do {
+			var request = URLRequest(url: URL(string: "\(AstradialAPIConfig.base)/api/v1/users/voip-push-token")!)
+			request.httpMethod = "POST"
+			request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+			request.setValue("Bearer \(try await PlatformAuth.shared.bearerToken())", forHTTPHeaderField: "Authorization")
+			request.httpBody = try JSONSerialization.data(withJSONObject: [
+				"asterisk_endpoint": endpoint, "token": token, "environment": environment
+			])
+			let (_, response) = try await AstradialHTTP.session.data(for: request)
+			let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+			Log.info("[VoIPPush] token registration -> HTTP \(code)")
+		} catch {
+			Log.warn("[VoIPPush] token registration failed: \(error.localizedDescription)")
+		}
+	}
+
 	func fetchCalls(from: Date, to: Date, maxRecords: Int = 3000) async throws -> [CDRCall] {
 		guard AstradialAPIConfig.isConfigured else { throw AstradialAPIError.notConfigured }
 		let dateFormatter = DateFormatter()
