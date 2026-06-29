@@ -351,9 +351,17 @@ class TelecomManager: ObservableObject {
 	}
 	
 	func displayIncomingCall(call: Call?, handle: String, hasVideo: Bool, callId: String, displayName: String) {
+		// Idempotent on callId: a VoIP push reports a placeholder first, then
+		// liblinphone's .PushIncomingReceived/.IncomingReceived call this again for
+		// the same call — update the existing CallKit call rather than report a
+		// duplicate. (Foreground calls have no prior uuid, so behaviour is unchanged.)
+		if let existing = providerDelegate.uuids[callId] {
+			providerDelegate.updateCall(uuid: existing, handle: handle, hasVideo: hasVideo, displayName: displayName)
+			return
+		}
 		let uuid = UUID()
 		let callInfo = CallInfo.newIncomingCallInfo(callId: callId)
-		
+
 		providerDelegate.callInfos.updateValue(callInfo, forKey: uuid)
 		providerDelegate.uuids.updateValue(uuid, forKey: callId)
 		providerDelegate.reportIncomingCall(call: call, uuid: uuid, handle: handle, hasVideo: hasVideo, displayName: displayName)

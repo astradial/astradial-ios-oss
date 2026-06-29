@@ -94,3 +94,61 @@ class EarlyPushkitDelegate: NSObject, PKPushRegistryDelegate, CXProviderDelegate
 		}
 	}
 }
+
+/// The real VoIP-push handler (supersedes EarlyPushkitDelegate, which is only a
+/// boot-time stub). It is the PKPushRegistry delegate for the whole app lifetime:
+///   • forwards the VoIP token to liblinphone and registers it with the Astradial
+///     platform so the server push gateway can target this device;
+///   • on an incoming VoIP push, reports the call to CallKit immediately (iOS 13+
+///     requires this in the push callback or the app is killed and pushes stop),
+///     then wakes liblinphone to pull the INVITE. The existing
+///     TelecomManager.onCallStateChanged path (.PushIncomingReceived /
+///     .IncomingReceived) then updates the same CallKit call.
+///
+/// Astradial runs Asterisk (not Belledonne's Flexisip), so the wake is driven by
+/// our own gateway + APNs VoIP push — not by liblinphone's RFC-8599 Contact params.
+///
+/// DORMANT until (A) the APNs VoIP key + Push capability exist on the paid team
+/// and (B) the server push gateway sends VoIP pushes. Until both exist no VoIP
+/// push ever arrives, so this cannot affect the running app.
+final class PushKitManager: NSObject, PKPushRegistryDelegate {
+	static let shared = PushKitManager()
+
+	/// Wire this manager as the registry delegate and request a VoIP token.
+	func start(registry: PKPushRegistry) {
+		registry.delegate = self
+		registry.desiredPushTypes = [.voIP]
+		Log.info("[PushKitManager] VoIP push registry started")
+	}
+
+	func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
+		let token = pushCredentials.token.map { String(format: "%02.2hhx", $0) }.joined()
+		Log.info("[PushKitManager] Received VoIP push token")
+		// doOnCoreQueue creates/queues against the core, so this works whether or
+		// not the core is up yet — no separate token cache/flush needed.
+		CoreContext.shared.doOnCoreQueue { core in
+			core.didRegisterForRemotePushWithStringifiedToken(deviceTokenStr: token + ":voip")
+		}
+		// ponytail: sending the token to the Astradial gateway lands with Part C
+		// (the server endpoint + payload contract are designed there together).
+	}
+
+	func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
+		Log.warn("[PushKitManager] VoIP push token invalidated")
+	}
+
+	func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
+		// call-id is liblinphone's standard VoIP-push key. The caller name is a
+		// generic placeholder — liblinphone fills the real name from the INVITE a
+		// moment later via onCallStateChanged → updateCall.
+		let callId = (payload.dictionaryPayload["call-id"] as? String) ?? ""
+		let placeholder = NSLocalizedString("early_push_unknown_caller", comment: "")
+		Log.info("[PushKitManager] Incoming VoIP push, callId=\(callId)")
+		// iOS 13+: must report an incoming call to CallKit before returning.
+		TelecomManager.shared.displayIncomingCall(call: nil, handle: placeholder, hasVideo: false, callId: callId, displayName: placeholder)
+		CoreContext.shared.doOnCoreQueue { core in
+			core.processPushNotification(callId: callId.isEmpty ? nil : callId)
+		}
+		completion()
+	}
+}

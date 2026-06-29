@@ -162,16 +162,17 @@ struct LinphoneApp: App {
 	@UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
 	@State private var configAvailable = AppServices.configIfAvailable != nil
-	private let earlyPushDelegate = EarlyPushkitDelegate()
 	private let voipRegistry = PKPushRegistry(queue: coreQueue)
 
 	init() {
 #if DEBUG
 		LinphoneApp.applyUITestMDMConfigIfNeeded()
 #endif
+		// Always request a VoIP token + wire the real PushKit handler. (A signed-in
+		// user previously never requested one — the registry was only set up in the
+		// no-config boot path.) Dormant until the APNs key + server gateway exist.
+		PushKitManager.shared.start(registry: voipRegistry)
 		if !configAvailable {
-			voipRegistry.delegate = earlyPushDelegate
-			voipRegistry.desiredPushTypes = [.voIP]
 			waitForConfig()
 		} else {
 			let _ = CoreContext.shared
