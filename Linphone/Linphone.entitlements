@@ -6,15 +6,13 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.astradial.phone</string>
-		<string>group.com.astradial.phone.linphoneExtension</string>
-		<string>group.com.astradial.phone.msgNotification</string>
+		<string>group.com.astradial.phone.shared</string>
 	</array>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)com.astradial.phone</string>
+		<string>$(AppIdentifierPrefix)com.astradial.softphone</string>
 	</array>
 </dict>
 </plist>
