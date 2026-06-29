@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "D719ABB22ABC67BF00B41C10"
-               BuildableName = "LinphoneApp.app"
-               BlueprintName = "LinphoneApp"
-               ReferencedContainer = "container:LinphoneApp.xcodeproj">
+               BuildableName = "Astradial.app"
+               BlueprintName = "Astradial"
+               ReferencedContainer = "container:Astradial.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -37,7 +37,7 @@
                BlueprintIdentifier = "C652710B2F88D1CA00FF248C"
                BuildableName = "LinphoneAppUITests.xctest"
                BlueprintName = "LinphoneAppUITests"
-               ReferencedContainer = "container:LinphoneApp.xcodeproj">
+               ReferencedContainer = "container:Astradial.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
@@ -48,7 +48,7 @@
                BlueprintIdentifier = "C6E408AE2F8E1A33003E0F8C"
                BuildableName = "LinphoneAppTests.xctest"
                BlueprintName = "LinphoneAppTests"
-               ReferencedContainer = "container:LinphoneApp.xcodeproj">
+               ReferencedContainer = "container:Astradial.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -68,9 +68,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "D719ABB22ABC67BF00B41C10"
-            BuildableName = "LinphoneApp.app"
-            BlueprintName = "LinphoneApp"
-            ReferencedContainer = "container:LinphoneApp.xcodeproj">
+            BuildableName = "Astradial.app"
+            BlueprintName = "Astradial"
+            ReferencedContainer = "container:Astradial.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -85,9 +85,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "D719ABB22ABC67BF00B41C10"
-            BuildableName = "LinphoneApp.app"
-            BlueprintName = "LinphoneApp"
-            ReferencedContainer = "container:LinphoneApp.xcodeproj">
+            BuildableName = "Astradial.app"
+            BlueprintName = "Astradial"
+            ReferencedContainer = "container:Astradial.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

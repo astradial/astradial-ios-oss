@@ -245,5 +245,5 @@ bundle):
 Then run:
 
 ```bash
-xcodebuild test -project LinphoneApp.xcodeproj -scheme LinphoneAppTests -destination "platform=iOS Simulator,id=$DEVICE_UUID"
+xcodebuild test -project Astradial.xcodeproj -scheme LinphoneAppTests -destination "platform=iOS Simulator,id=$DEVICE_UUID"
 ```

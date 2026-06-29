@@ -79,7 +79,7 @@ export TEST_RUNNER_LINPHONE_TEST_DOMAIN="$LINPHONE_TEST_DOMAIN"
 export TEST_RUNNER_LINPHONE_TEST_CONFIG_URI="$LINPHONE_TEST_CONFIG_URI"
 
 BUNDLE_ID="org.linphone.phone"
-PROJECT="LinphoneApp.xcodeproj"
+PROJECT="Astradial.xcodeproj"
 SCHEME="LinphoneAppUITests"
 TEST_CLASS="LinphoneAppUITests/MDMChatFeatureUITests"
 

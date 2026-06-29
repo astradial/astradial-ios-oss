@@ -19,10 +19,10 @@
             parallelizable = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "C652710B2F88D1CA00FF248C"
-               BuildableName = "LinphoneAppUITests.xctest"
-               BlueprintName = "LinphoneAppUITests"
-               ReferencedContainer = "container:LinphoneApp.xcodeproj">
+               BlueprintIdentifier = "C6E408AE2F8E1A33003E0F8C"
+               BuildableName = "LinphoneAppTests.xctest"
+               BlueprintName = "LinphoneAppTests"
+               ReferencedContainer = "container:Astradial.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>

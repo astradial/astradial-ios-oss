@@ -35,7 +35,7 @@ jobs:
       - name: Resolve packages & build
         run: |
           set -o pipefail
-          xcodebuild -project LinphoneApp.xcodeproj -scheme Linphone \
+          xcodebuild -project Astradial.xcodeproj -scheme Astradial \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \

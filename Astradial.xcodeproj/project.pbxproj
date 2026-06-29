@@ -319,7 +319,7 @@
 		D717630C2BD7BD0E00464097 /* ParticipantsListFragment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantsListFragment.swift; sourceTree = "<group>"; };
 		D717A10D2CEB770D00849D92 /* ShareSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheetController.swift; sourceTree = "<group>"; };
 		D71968912B86369D00DF4459 /* ChatBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbleView.swift; sourceTree = "<group>"; };
-		D719ABB32ABC67BF00B41C10 /* LinphoneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LinphoneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D719ABB32ABC67BF00B41C10 /* Astradial.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Astradial.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D719ABB62ABC67BF00B41C10 /* LinphoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinphoneApp.swift; sourceTree = "<group>"; };
 		D719ABB82ABC67BF00B41C10 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		D719ABBA2ABC67BF00B41C10 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -1270,9 +1270,9 @@
 			);
 			dependencies = (
 			);
-			name = LinphoneApp;
-			productName = Linphone;
-			productReference = D719ABB32ABC67BF00B41C10 /* LinphoneApp.app */;
+			name = Astradial;
+			productName = Astradial;
+			productReference = D719ABB32ABC67BF00B41C10 /* Astradial.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -1724,7 +1724,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = LinphoneApp;
+				TEST_TARGET_NAME = Astradial;
 			};
 			name = Debug;
 		};
@@ -1751,7 +1751,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = LinphoneApp;
+				TEST_TARGET_NAME = Astradial;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -1781,7 +1781,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LinphoneApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LinphoneApp";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Astradial.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Astradial";
 			};
 			name = Debug;
 		};
@@ -1809,7 +1809,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LinphoneApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LinphoneApp";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Astradial.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Astradial";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -1871,7 +1871,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_NAME = LinphoneApp;
+				PRODUCT_NAME = Astradial;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -1927,7 +1927,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				PRODUCT_NAME = LinphoneApp;
+				PRODUCT_NAME = Astradial;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
